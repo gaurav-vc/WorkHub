@@ -1,0 +1,18 @@
+## Phase 4: AI Sheets Implementation Details
+
+> [!IMPORTANT]
+> Please review this architecture plan for the AI Sheets implementation. We will securely weave spreadsheet capabilities into your existing Document infrastructure to avoid database bloat.
+
+### Reused Systems (No Changes)
+- **Database & Storage**: We will reuse the exact same legacy `/api/docs/` module and the existing `Document` model (`backend/docs/models.py`). Spreadsheets will simply be saved as stringified JSON or CSV data within the existing `content` field, using a special prefix or folder convention. This guarantees all your existing folder structures, sharing permissions, and audit logs immediately work for spreadsheets with zero extra backend setup.
+
+### Files to Modify / Create
+
+1. **`backend/ai_agents/services.py` [MODIFY]**
+   - **Sheets Routing**: Expand the `AIGatewayService` to handle `agent_type == 'sheets'`.
+   - **Data Analysis Prompts**: Add LLM logic specifically tuned for tabular data, handling actions like `generate_formula`, `analyze`, and `create_template`.
+
+2. **`frontend/src/components/ai/functional/AISheets.tsx` [MODIFY]**
+   - **Grid UI**: Build a functional spreadsheet interface (data grid).
+   - **API Hookup**: Connect the grid to your legacy `/api/docs/` endpoint (treating the JSON grid data as document content) for autosave and loading.
+   - **AI Gateway Integration**: Implement AI action buttons that securely POST the grid data to the centralized `/api/ai_agents/agents/invoke/` Gateway to return formulas or data insights.

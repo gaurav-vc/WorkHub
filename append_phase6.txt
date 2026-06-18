@@ -1,0 +1,18 @@
+## Phase 6: AI Meeting Assistant Implementation Details
+
+> [!IMPORTANT]
+> Please review this architecture plan for the AI Meeting Assistant. We will securely attach intelligence to your existing Calendar/Meeting events without creating redundant databases.
+
+### Reused Systems (No Changes)
+- **Database & Storage**: We will reuse the exact same legacy `/api/calendar/` module and the existing `Meeting` model (`backend/api/models.py`). AI-generated meeting summaries, extracted action items, decisions, and transcripts will be directly appended to the meeting's existing `description` field. This ensures your existing calendar views and notifications immediately display AI insights without any backend schema migrations.
+
+### Files to Modify / Create
+
+1. **`backend/ai_agents/services.py` [MODIFY]**
+   - **Meeting Routing**: Expand the `AIGatewayService` to handle `agent_type == 'meeting'`.
+   - **Generative Prompts**: Add LLM logic optimized for raw transcript processing. Include actions like `summarize_meeting`, `extract_action_items`, `generate_follow_up_email`, and `analyze_decisions`.
+
+2. **`frontend/src/components/ai/functional/AIMeeting.tsx` [MODIFY]**
+   - **Meeting UI**: Build an interface that lists your upcoming/past meetings by fetching from the legacy `/api/calendar/events/` endpoint.
+   - **API Hookup**: Add a text area to paste raw meeting transcripts or notes. Connect the "Save Insights" button to `PATCH /api/calendar/events/{id}/update/` to safely inject the AI summary into the meeting `description`.
+   - **AI Gateway Integration**: Securely POST the transcript to the centralized `/api/ai_agents/agents/invoke/` Gateway to receive the structured insights.

@@ -1,0 +1,37 @@
+[
+  {
+    "id": "TC001",
+    "title": "postapiauthloginwithvalidcredentials",
+    "description": "Test user authentication with valid username and password to ensure JWT tokens (access, refresh, id) are issued correctly and response status is 200."
+  },
+  {
+    "id": "TC002",
+    "title": "getapimydaydashboardwithvalidjwttoken",
+    "description": "Verify retrieval of the authenticated user's dashboard data including current user info, summary statistics, and pending approvals with a valid JWT token returns status 200 and correct data structure."
+  },
+  {
+    "id": "TC003",
+    "title": "postapimydayapprovalsapprovalidactionapprovebyowner",
+    "description": "Test approval action on an approval assigned to the authenticated user with valid JWT token and action=approve returns status 200 with updated approval status and message."
+  },
+  {
+    "id": "TC004",
+    "title": "postapimydaytaskscreatewithvalidjwttoken",
+    "description": "Verify that creating a new task with valid JWT token, title, and priority returns status 200 with a success message and a valid task_id."
+  },
+  {
+    "id": "TC005",
+    "title": "postapimydaytaskstaskidtogglewithvalidjwttoken",
+    "description": "Test toggling the status of an existing task with valid JWT token returns status 200 with updated task status and confirmation message."
+  },
+  {
+    "id": "TC006",
+    "title": "getapirbacroleaccessmyaccesswithvalidjwttoken",
+    "description": "Verify that fetching role-based access mappings for the logged-in user with a valid JWT token returns status 200 with the user's role and access array."
+  },
+  {
+    "id": "TC007",
+    "title": "postapiorganizationorganizationswithvalidjwttoken",
+    "description": "Test creation of a new organization with valid JWT token and required admin details returns status 201 with the new organization's id and name."
+  }
+]

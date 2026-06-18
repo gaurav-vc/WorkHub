@@ -1,0 +1,18 @@
+## Phase 5: AI Slides Implementation Details
+
+> [!IMPORTANT]
+> Please review this architecture plan for the AI Slides implementation. Similar to Sheets and Docs, we will seamlessly integrate presentation capabilities into your existing Document infrastructure to avoid database bloat.
+
+### Reused Systems (No Changes)
+- **Database & Storage**: We will reuse the exact same legacy `/api/docs/` module and the existing `Document` model (`backend/docs/models.py`). Presentations will simply be saved as stringified JSON data (an array of slides with titles, bullet points, and themes) within the existing `content` field. This guarantees all your existing folder structures, sharing permissions, and audit logs immediately work for presentations with zero extra backend setup.
+
+### Files to Modify / Create
+
+1. **`backend/ai_agents/services.py` [MODIFY]**
+   - **Slides Routing**: Expand the `AIGatewayService` to handle `agent_type == 'slides'`.
+   - **Generative Prompts**: Add LLM logic specifically tuned for creating presentations, instructing the AI to output a structured JSON schema containing slide titles, bullet points, and speaker notes based on the user's prompt (e.g. "Create a Q3 Sales Report").
+
+2. **`frontend/src/components/ai/functional/AISlides.tsx` [MODIFY]**
+   - **Presentation UI**: Build a functional presentation interface (sidebar for slide thumbnails, main area for slide preview).
+   - **API Hookup**: Connect the UI to your legacy `/api/docs/` endpoint (treating the JSON slide array as document content) for autosave and loading.
+   - **AI Gateway Integration**: Implement a prompt bar that securely POSTs presentation requests to the centralized `/api/ai_agents/agents/invoke/` Gateway, instantly rendering the returned JSON into beautiful slides.

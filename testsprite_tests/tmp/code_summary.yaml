@@ -1,0 +1,124 @@
+version: "2"
+type: backend
+tech_stack:
+  - Python
+  - Django
+  - Django REST Framework
+  - SQLite
+  - Simple JWT
+features:
+  - name: Authentication API
+    description: User authentication and token management
+    files:
+      - backend/authentication/views.py
+      - backend/authentication/urls.py
+    endpoints:
+      - method: POST
+        path: /api/auth/login/
+        description: Authenticate user and return JWT tokens
+        auth_required: false
+        request_schema:
+          body:
+            username: string
+            password: string
+        response_schema:
+          "200":
+            access: string
+            refresh: string
+            id: integer
+  - name: MyDay Dashboard & Approvals
+    description: User dashboard and approval workflows
+    files:
+      - backend/myday/views.py
+      - backend/myday/urls.py
+    endpoints:
+      - method: GET
+        path: /api/myday/dashboard/
+        description: Retrieve user dashboard data including tasks, meetings, and pending approvals
+        auth_required: true
+        response_schema:
+          "200":
+            currentUser: object
+            summaryStats: object
+            pendingApprovals: array
+      - method: POST
+        path: /api/myday/approvals/{approval_id}/action/
+        description: Approve or decline an HR request or general approval
+        auth_required: true
+        request_schema:
+          body:
+            action: string
+        response_schema:
+          "200":
+            message: string
+            status: string
+  - name: Task Management
+    description: Creating and toggling tasks
+    files:
+      - backend/myday/views.py
+      - backend/myday/urls.py
+    endpoints:
+      - method: POST
+        path: /api/myday/tasks/create/
+        description: Create a new task
+        auth_required: true
+        request_schema:
+          body:
+            title: string
+            priority: string
+        response_schema:
+          "200":
+            message: string
+            task_id: integer
+      - method: POST
+        path: /api/myday/tasks/{task_id}/toggle/
+        description: Toggle task status
+        auth_required: true
+        response_schema:
+          "200":
+            message: string
+            status: string
+  - name: Role Based Access Control
+    description: Manage and retrieve user access rules
+    files:
+      - backend/role_base_access/views.py
+      - backend/role_base_access/urls.py
+    endpoints:
+      - method: GET
+        path: /api/rbac/role-access/my_access/
+        description: Get access routes for the currently logged-in user
+        auth_required: true
+        response_schema:
+          "200":
+            role: string
+            access: array
+  - name: Organization Setup
+    description: Manage organizations and sites
+    files:
+      - backend/organization/views.py
+      - backend/organization/urls.py
+    endpoints:
+      - method: POST
+        path: /api/organization/organizations/
+        description: Create a new organization and default site
+        auth_required: true
+        request_schema:
+          body:
+            name: string
+            admin_email: string
+            admin_name: string
+        response_schema:
+          "201":
+            id: integer
+            name: string
+depends_on: []
+known_limitations:
+  - issue: IDOR in Approval Workflows
+    location: backend/myday/views.py
+    impact: Users can approve requests they do not own
+  - issue: Missing Backend RBAC Enforcement
+    location: backend/myday/views.py
+    impact: Users can bypass UI restrictions via API
+  - issue: Tenant Data Leakage via Standard ViewSets
+    location: backend/api/views.py
+    impact: Cross-organizational data exposure
