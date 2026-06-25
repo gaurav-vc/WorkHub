@@ -85,3 +85,32 @@ class ApprovalSerializer(serializers.ModelSerializer):
 
     def get_type(self, obj):
         return obj.approval_type
+
+from .models import AttendanceRecord, LeaderboardEntry
+
+class AttendanceRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = AttendanceRecord
+        fields = ['id', 'date', 'is_present']
+
+class LeaderboardEntrySerializer(serializers.ModelSerializer):
+    name = serializers.SerializerMethodField()
+    initials = serializers.SerializerMethodField()
+    role = serializers.SerializerMethodField()
+
+    class Meta:
+        model = LeaderboardEntry
+        fields = ['id', 'name', 'initials', 'role', 'points', 'level']
+
+    def get_name(self, obj):
+        return obj.user.get_full_name() or obj.user.username
+        
+    def get_initials(self, obj):
+        name = self.get_name(obj)
+        return name.split(" ")[0][0].upper() + (name.split(" ")[1][0].upper() if len(name.split(" ")) > 1 else "")
+        
+    def get_role(self, obj):
+        try:
+            return obj.user.auth_profile.role
+        except Exception:
+            return "Employee"

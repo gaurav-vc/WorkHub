@@ -6,6 +6,7 @@ class Policy(TenantModel):
     category = models.CharField(max_length=100, default="General")
     version = models.CharField(max_length=20, default="1.0")
     content = models.TextField()
+    attachment = models.FileField(upload_to='policies/', null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

@@ -4,6 +4,7 @@ from .models import Article, ArticleCategory
 class ArticleSerializer(serializers.ModelSerializer):
     updatedAt = serializers.SerializerMethodField()
     author = serializers.SerializerMethodField()
+    file_url = serializers.SerializerMethodField()
     
     # THE FIX: explicitly add required=False so Django stops rejecting the form!
     category = serializers.CharField(source='category.slug', required=False)
@@ -13,8 +14,16 @@ class ArticleSerializer(serializers.ModelSerializer):
         model = Article
         fields = [
             'id', 'title', 'excerpt', 'category', 'tags', 
-            'author', 'readTime', 'views', 'updatedAt', 'content'
+            'author', 'readTime', 'views', 'updatedAt', 'content', 'file', 'file_url'
         ]
+
+    def get_file_url(self, obj):
+        if obj.file:
+            request = self.context.get('request')
+            if request:
+                return request.build_absolute_uri(obj.file.url)
+            return obj.file.url
+        return None
 
     def get_updatedAt(self, obj):
         return obj.updated_at.strftime("%b %d, %Y")

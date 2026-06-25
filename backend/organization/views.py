@@ -36,9 +36,15 @@ from .models import Site
 from .serializers import SiteSerializer
 
 class SiteViewSet(viewsets.ModelViewSet):
+    from rest_framework.permissions import IsAuthenticated
     queryset = Site.objects.all().order_by('-created_at')
     serializer_class = SiteSerializer
-    permission_classes = [IsSuperAdmin]
+    
+    def get_permissions(self):
+        if self.action in ['list', 'retrieve']:
+            return [IsAuthenticated()]
+        return [IsSuperAdmin()]
+
 
     def get_queryset(self):
         queryset = super().get_queryset()

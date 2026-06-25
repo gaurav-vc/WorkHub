@@ -104,9 +104,9 @@ class AssessmentSessionViewSet(viewsets.ModelViewSet):
             return Response({'error': 'employee_name and course_id required'}, status=400)
         
         try:
-            course = Course.objects.get(id=course_id)
+            course = Course.all_objects.get(id=course_id)
         except Course.DoesNotExist:
-            return Response({'error': 'Course not found or access denied.'}, status=400)
+            return Response({'error': f'Course not found or access denied. ID received: {course_id}'}, status=400)
         settings = GlobalVideoSettings.objects.first()
         question_count = settings.assessment_question_count if settings else 50
         max_attempts = settings.max_assessment_attempts if settings else 3
@@ -176,12 +176,19 @@ class AssessmentSessionViewSet(viewsets.ModelViewSet):
     def finish(self, request, pk=None):
         session = self.get_object()
         answers = AssessmentAnswer.objects.filter(session=session)
-        total_questions = answers.count()
-        if total_questions == 0:
-            return Response({'error': 'No answers submitted.'}, status=400)
+        
+        frontend_total = request.data.get('total_questions')
+        if frontend_total is not None and int(frontend_total) > 0:
+            total_questions = int(frontend_total)
+        else:
+            total_questions = answers.count()
             
         correct_answers = answers.filter(is_correct=True).count()
-        score_percent = (correct_answers / total_questions) * 100
+        
+        if total_questions == 0:
+            score_percent = 0.0
+        else:
+            score_percent = (correct_answers / total_questions) * 100
         
         settings = GlobalVideoSettings.objects.first()
         passing_score = settings.assessment_passing_score if settings else 80

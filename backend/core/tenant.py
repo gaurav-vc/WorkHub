@@ -89,10 +89,17 @@ class TenantModel(models.Model):
                 self.organization = org
             else:
                 user = get_current_user()
-                if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
-                    raise PermissionDenied("Super Admins cannot create tenant-specific records.")
-                elif user:
-                    raise PermissionDenied("You must belong to an organization to create records.")
+                
+                # Fallback to the first organization if one exists
+                from organization.models import Organization
+                fallback_org = Organization.objects.first()
+                if fallback_org:
+                    self.organization = fallback_org
+                else:
+                    if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
+                        raise PermissionDenied("Super Admins cannot create tenant-specific records.")
+                    elif user:
+                        raise PermissionDenied("You must belong to an organization to create records.")
                     
         # Also auto-assign site if it's available and not already set
         if not self.site_id:

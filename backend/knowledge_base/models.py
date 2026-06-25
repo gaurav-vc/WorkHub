@@ -13,8 +13,9 @@ class ArticleCategory(TenantModel):
 
 class Article(TenantModel):
     title = models.CharField(max_length=255)
-    excerpt = models.TextField()
-    content = models.TextField()
+    excerpt = models.TextField(blank=True, default="")
+    content = models.TextField(blank=True, default="")
+    file = models.FileField(upload_to='kb_files/', null=True, blank=True)
     category = models.ForeignKey(ArticleCategory, on_delete=models.CASCADE, related_name='articles')
     tags = models.JSONField(default=list, blank=True) # Stores arrays like ["Guide", "HR"]
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)

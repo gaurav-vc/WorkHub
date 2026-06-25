@@ -64,3 +64,22 @@ class Approval(TenantModel):
 
     def __str__(self):
         return f"{self.get_approval_type_display()} from {self.requester} → {self.status}"
+
+class AttendanceRecord(TenantModel):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='attendance_records')
+    date = models.DateField()
+    is_present = models.BooleanField(default=False)
+
+    class Meta:
+        unique_together = ('user', 'date')
+
+    def __str__(self):
+        return f"{self.user.username} - {self.date} - {'Present' if self.is_present else 'Absent'}"
+
+class LeaderboardEntry(TenantModel):
+    user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='leaderboard_entry')
+    points = models.IntegerField(default=0)
+    level = models.IntegerField(default=1)
+
+    def __str__(self):
+        return f"{self.user.username} - {self.points} pts (Lvl {self.level})"

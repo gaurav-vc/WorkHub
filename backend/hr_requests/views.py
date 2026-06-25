@@ -1,10 +1,13 @@
 from rest_framework import viewsets
 from rest_framework.permissions import IsAuthenticated
-from .models import HRRequest, HRRequestLog
-from .serializers import HRRequestSerializer
+from .models import HRRequest, HRRequestLog, AttendanceRecord, LeaderboardEntry
+from .serializers import HRRequestSerializer, AttendanceRecordSerializer, LeaderboardEntrySerializer
 from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 from .utils import get_hr_permissions, get_team_users
+from django.contrib.auth.models import User
+from rest_framework.response import Response
+from rest_framework.decorators import action
 
 class HRRequestViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
@@ -106,3 +109,32 @@ class HRRequestViewSet(viewsets.ModelViewSet):
                 raise PermissionDenied("You can only delete requests of your team members.")
 
         instance.delete()
+
+class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    queryset = User.objects.all()
+
+    @action(detail=False, methods=['get'])
+    def summary(self, request):
+        users = User.objects.all()
+        data = []
+        for u in users:
+            records = AttendanceRecord.objects.filter(user=u).order_by('date')
+            data.append({
+                'id': u.id,
+                'first_name': u.first_name,
+                'last_name': u.last_name,
+                'email_id': u.email,
+                'mobile': '',
+                'profile_photo': None,
+                'user_type': getattr(u, 'auth_profile', None).role if getattr(u, 'auth_profile', None) else 'employee',
+                'vibe_id': str(u.id),
+                'last_login': u.last_login.isoformat() if u.last_login else None,
+                'attendance_records': AttendanceRecordSerializer(records, many=True).data
+            })
+        return Response({'results': data})
+
+class LeaderboardViewSet(viewsets.ReadOnlyModelViewSet):
+    permission_classes = [IsAuthenticated]
+    serializer_class = LeaderboardEntrySerializer
+    queryset = LeaderboardEntry.objects.all().order_by('-points')

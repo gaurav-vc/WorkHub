@@ -7,7 +7,7 @@ class PolicySerializer(serializers.ModelSerializer):
     class Meta:
         model = Policy
         # Matching React interface keys
-        fields = ['id', 'title', 'category', 'version', 'content', 'lastUpdated']
+        fields = ['id', 'title', 'category', 'version', 'content', 'lastUpdated', 'attachment']
 
     def get_lastUpdated(self, obj):
         # Formats like "Jan 2026" to match your UI perfectly

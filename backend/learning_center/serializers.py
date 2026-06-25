@@ -99,7 +99,12 @@ class CourseSerializer(serializers.ModelSerializer):
         else:
             faqs_data = validated_data.pop('faqs', [])
 
-        course = Course.objects.create(**validated_data)
+        request = self.context.get('request')
+        org = None
+        if request and hasattr(request.user, 'auth_profile') and request.user.auth_profile.organization:
+            org = request.user.auth_profile.organization
+            
+        course = Course.objects.create(organization=org, **validated_data)
 
         # Create Topics and Points
         for topic_data in topics_data:

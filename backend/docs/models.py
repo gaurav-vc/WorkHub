@@ -26,6 +26,26 @@ class Document(models.Model):
     def __str__(self):
         return self.title
 
+    @property
+    def file_name(self):
+        if self.file:
+            import os
+            return os.path.basename(self.file.name)
+        return ""
+
+    @property
+    def file_size(self):
+        if self.file:
+            try:
+                size = self.file.size
+                for unit in ['B', 'KB', 'MB', 'GB']:
+                    if size < 1024.0:
+                        return f"{size:.1f} {unit}"
+                    size /= 1024.0
+            except:
+                return ""
+        return ""
+
 class SharedItem(models.Model):
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, null=True, blank=True, related_name='shares')
     document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True, related_name='shares')

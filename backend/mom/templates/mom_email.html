@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { font-family: Arial, sans-serif; color: #333; margin: 0; padding: 20px; background-color: #f8f9fa; }
+        .container { max-w-4xl; margin: 0 auto; background: white; padding: 30px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .header { background-color: #2b6cb0; color: white; padding: 20px; display: flex; justify-content: space-between; align-items: center; }
+        .header h1 { margin: 0; font-size: 24px; text-transform: uppercase; }
+        .header p { margin: 5px 0 0; font-size: 14px; opacity: 0.9; }
+        .header-right { text-align: right; font-size: 14px; }
+        .section { margin-top: 30px; }
+        .section-title { background-color: #ebf4ff; color: #2b6cb0; padding: 10px 15px; font-weight: bold; margin-bottom: 15px; border-radius: 4px; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; font-size: 13px; }
+        th, td { border: 1px solid #e2e8f0; padding: 10px; text-align: left; }
+        th { background-color: #f7fafc; font-weight: 600; color: #4a5568; }
+        .th-blue { background-color: #3182ce; color: white; font-weight: bold; }
+        .footer { margin-top: 50px; text-align: center; font-size: 11px; color: #a0aec0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>FACILITY MANAGEMENT</h1>
+                <p>Minutes of Meeting</p>
+            </div>
+            <div class="header-right">
+                <div>MOM No: MOM-{{ mom.id }}</div>
+                <div>Status: {{ mom.get_meeting_status_display|default:mom.meeting_status|title }}</div>
+            </div>
+        </div>
+
+        <p style="margin-top:20px;">Dear {{ attendee_name }},</p>
+        <p>You have been added to the Minutes of Meeting for <strong>{{ mom.title }}</strong>. Please find the details below:</p>
+
+        <!-- 1. Meeting Information -->
+        <div class="section">
+            <div class="section-title">1. Meeting Information</div>
+            <table>
+                <tr><td width="30%"><strong>Client Name</strong></td><td>{{ client_name|default:"-" }}</td></tr>
+                <tr><td><strong>Site Name</strong></td><td>{{ site_name|default:"-" }}</td></tr>
+                <tr><td><strong>Location</strong></td><td>{{ location|default:"-" }}</td></tr>
+                <tr><td><strong>Meeting Date</strong></td><td>{{ meeting_date|date:"Y-m-d" }}</td></tr>
+                <tr><td><strong>Start Time</strong></td><td>{{ start_time|time:"H:i"|default:"-" }}</td></tr>
+                <tr><td><strong>End Time</strong></td><td>{{ end_time|time:"H:i"|default:"-" }}</td></tr>
+                <tr><td><strong>Meeting Type</strong></td><td>{{ meeting_type|title|default:"-" }}</td></tr>
+                <tr><td><strong>Prepared By</strong></td><td>{{ prepared_by|default:"-" }}</td></tr>
+            </table>
+        </div>
+
+        <!-- 2. Attendees -->
+        <div class="section">
+            <div class="section-title">2. Attendees</div>
+            <table>
+                <tr>
+                    <th class="th-blue" width="5%">#</th>
+                    <th class="th-blue">Name</th>
+                    <th class="th-blue">Email</th>
+                    <th class="th-blue">Type</th>
+                </tr>
+                {% for att in attendees %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{% if att.is_external %}{{ att.name }}{% else %}{{ att.user.get_full_name|default:att.user.username }}{% endif %}</td>
+                    <td>{% if att.is_external %}{{ att.email|default:"-" }}{% else %}{{ att.user.email|default:"-" }}{% endif %}</td>
+                    <td>{% if att.is_external %}Client{% else %}Internal{% endif %}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="4" align="center">No attendees</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <!-- 3. Meeting Agenda -->
+        <div class="section">
+            <div class="section-title">3. Meeting Agenda</div>
+            <table>
+                <tr>
+                    <th class="th-blue" width="5%">Sr No</th>
+                    <th class="th-blue" width="30%">Agenda Topic</th>
+                    <th class="th-blue">Discussion Remarks</th>
+                </tr>
+                {% for agenda in agendas %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ agenda.topic }}</td>
+                    <td>{{ agenda.remarks|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="3" align="center">No agenda items</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <!-- 4. Action Plan / Next Steps -->
+        <div class="section">
+            <div class="section-title">4. Action Plan / Next Steps</div>
+            <table>
+                <tr>
+                    <th class="th-blue" width="5%">Sr</th>
+                    <th class="th-blue">Action Item</th>
+                    <th class="th-blue">Responsible</th>
+                    <th class="th-blue">Department</th>
+                    <th class="th-blue">Priority</th>
+                    <th class="th-blue">Planned</th>
+                    <th class="th-blue">Status</th>
+                </tr>
+                {% for point in points %}
+                <tr>
+                    <td>{{ forloop.counter }}</td>
+                    <td>{{ point.text }}</td>
+                    <td>{{ point.assigned_to.get_full_name|default:point.assigned_to.username|default:"Unassigned" }}</td>
+                    <td>{{ point.department|default:"-" }}</td>
+                    <td>{{ point.priority|default:"-" }}</td>
+                    <td>{{ point.planned_date|date:"Y-m-d"|default:"-" }}</td>
+                    <td>{{ point.status|default:"-" }}</td>
+                </tr>
+                {% empty %}
+                <tr><td colspan="7" align="center">No action items</td></tr>
+                {% endfor %}
+            </table>
+        </div>
+
+        <div class="footer">
+            Facility Management &bull; Confidential &bull; Auto-generated email
+        </div>
+    </div>
+</body>
+</html>

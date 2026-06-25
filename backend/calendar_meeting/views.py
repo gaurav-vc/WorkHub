@@ -30,9 +30,13 @@ def event_list(request):
             "meeting_type": m.meeting_type,
             "description": m.description,
             "meeting_link": m.meeting_link,
+            "platform": m.platform,
+            "is_recurring": m.is_recurring,
+            "recurring_type": m.recurring_type,
             "attendees": m.attendees.count() + 1, # + organizer
             "internal_attendees": [{"id": a.id, "name": a.get_full_name() or a.username} for a in m.attendees.all()],
             "external_attendees": m.external_attendees,
+            "start_time": m.meeting_time.isoformat(),
             "is_task": False
         })
         
@@ -40,7 +44,8 @@ def event_list(request):
     tasks = Task.objects.filter(Q(assigned_to=request.user) | Q(created_by=request.user)).distinct()
     for t in tasks:
         # Convert date to datetime for unified representation
-        due_dt = datetime.datetime.combine(t.due_date, datetime.time(9, 0))
+        task_due_date = t.due_date if t.due_date else timezone.now().date()
+        due_dt = datetime.datetime.combine(task_due_date, datetime.time(9, 0))
         if timezone.is_naive(due_dt):
             try:
                 due_dt = timezone.make_aware(due_dt)
@@ -51,6 +56,7 @@ def event_list(request):
             "id": f"task_{t.id}",
             "title": f"📋 [Task] {t.title}",
             "meeting_time": due_dt.isoformat(),
+            "start_time": due_dt.isoformat(),
             "duration": "1 hour",
             "meeting_type": "task",
             "description": t.description,
@@ -119,6 +125,7 @@ def event_create(request):
         meeting_type = request.data.get('meeting_type', 'internal')
         description = request.data.get('description', '')
         meeting_link = request.data.get('meeting_link', '')
+        platform = request.data.get('platform', '')
 
         try:
             dt = dateutil_parse(start_time)
@@ -157,6 +164,10 @@ def event_create(request):
                         meeting_type=meeting_type,
                         description=description,
                         meeting_link=meeting_link,
+                        platform=platform,
+                        is_recurring=True,
+                        recurring_type=recurrence_type,
+                        recurring_end_date=end_dt,
                         organizer=request.user
                     )
                     meetings_to_create.append(meeting)
@@ -179,6 +190,7 @@ def event_create(request):
                 meeting_type=meeting_type,
                 description=description,
                 meeting_link=meeting_link,
+                platform=platform,
                 organizer=request.user
             )
             meetings_to_create.append(meeting)

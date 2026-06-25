@@ -96,7 +96,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Project
-        fields = ['id', 'name', 'description', 'status', 'progress', 'department', 'dueDate', 'team', 'tasks', 'imported_tasks', 'created_by', 'created_by_name', 'created_at']
+        fields = ['id', 'name', 'description', 'status', 'progress', 'department', 'template_type', 'dueDate', 'team', 'tasks', 'imported_tasks', 'created_by', 'created_by_name', 'created_at']
         read_only_fields = ['id', 'created_at']
 
     def get_created_by_name(self, obj):

@@ -19,6 +19,10 @@ class Meeting(TenantModel):
     duration = models.CharField(max_length=50, default="30 mins")
     meeting_type = models.CharField(max_length=20, choices=TYPE_CHOICES, default='internal')
     meeting_link = models.URLField(blank=True, null=True)
+    platform = models.CharField(max_length=50, blank=True, null=True)
+    is_recurring = models.BooleanField(default=False)
+    recurring_type = models.CharField(max_length=50, default='none')
+    recurring_end_date = models.DateField(blank=True, null=True)
 
     class Meta:
         ordering = ['meeting_time']

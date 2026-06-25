@@ -23,7 +23,8 @@ class MOMViewSet(viewsets.ModelViewSet):
             description=mom.description,
             meeting_date=mom.meeting_date,
             tags=mom.tags,
-            created_by=request.user
+            created_by=request.user,
+            organization=mom.organization
         )
         
         # Clone points unassigned
@@ -46,11 +47,46 @@ class MOMViewSet(viewsets.ModelViewSet):
             name = request.data.get('name')
             email = request.data.get('email')
             phone = request.data.get('phone')
-            attendee = MOMAttendee.objects.create(mom=mom, is_external=True, name=name, email=email, phone=phone)
+            attendee = MOMAttendee.objects.create(mom=mom, is_external=True, name=name, email=email, phone=phone, organization=mom.organization)
+            
+            # Send Email Trigger for External Attendee
+            if email:
+                from django.template.loader import render_to_string
+                from django.utils.html import strip_tags
+                from django.conf import settings
+                
+                context = {
+                    'mom': mom,
+                    'attendee_name': name,
+                    'meeting_date': mom.meeting_date,
+                    'start_time': mom.start_time,
+                    'end_time': mom.end_time,
+                    'client_name': mom.client_name,
+                    'site_name': mom.site_name,
+                    'location': mom.location,
+                    'meeting_type': mom.meeting_type,
+                    'prepared_by': mom.prepared_by,
+                    'agendas': mom.agendas.all(),
+                    'points': mom.points.all(),
+                    'attendees': mom.attendees.all()
+                }
+                try:
+                    html_message = render_to_string('mom_email.html', context)
+                    plain_message = strip_tags(html_message)
+                    send_mail(
+                        subject=f"Minutes of Meeting: {mom.title}",
+                        message=plain_message,
+                        from_email=settings.DEFAULT_FROM_EMAIL,
+                        recipient_list=[email],
+                        html_message=html_message,
+                        fail_silently=False,
+                    )
+                except Exception as e:
+                    print(f"Error sending external attendee email: {e}")
         else:
             user_id = request.data.get('user_id')
             user = User.objects.get(id=user_id)
-            attendee = MOMAttendee.objects.create(mom=mom, is_external=False, user=user)
+            attendee = MOMAttendee.objects.create(mom=mom, is_external=False, user=user, organization=mom.organization)
             
         mom = self.get_queryset().get(pk=mom.pk)
         serializer = self.get_serializer(mom)

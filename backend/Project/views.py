@@ -20,7 +20,11 @@ def project_list_create(request):
         except Exception:
             pass
 
-        q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
+        if request.user and request.user.is_authenticated:
+            q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
+        else:
+            q = Q(department='all') | Q(created_by__in=visible_users)
+            
         if user_dept:
             q |= Q(department__iexact=user_dept)
             
@@ -45,14 +49,18 @@ def project_list_create(request):
             except Exception:
                 pass
         
-        serializer = ProjectSerializer(data=request.data)
-        if serializer.is_valid():
-            if org:
-                serializer.save(created_by=user, organization=org)
-            else:
-                serializer.save(created_by=user)
-            return Response(serializer.data, status=201)
-        return Response(serializer.errors, status=400)
+        try:
+            serializer = ProjectSerializer(data=request.data)
+            if serializer.is_valid():
+                if org:
+                    serializer.save(created_by=user, organization=org)
+                else:
+                    serializer.save(created_by=user)
+                return Response(serializer.data, status=201)
+            return Response(serializer.errors, status=400)
+        except Exception as e:
+            import traceback
+            return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
 @api_view(['GET', 'PUT', 'DELETE'])
 def project_detail(request, project_id):
@@ -67,7 +75,11 @@ def project_detail(request, project_id):
     except Exception:
         pass
 
-    q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
+    if request.user and request.user.is_authenticated:
+        q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
+    else:
+        q = Q(department='all') | Q(created_by__in=visible_users)
+        
     if user_dept:
         q |= Q(department__iexact=user_dept)
 
@@ -336,7 +348,38 @@ class TaskViewSet(TenantModelViewSet):
 
     def create(self, request, *args, **kwargs):
         org = self.get_organization()
-        project_id = request.data.get('project_id')
+        
+        # Make a mutable copy of the data
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Map frontend camelCase to backend snake_case
+        if data.get('dueDate'):
+            data['due_date'] = data.get('dueDate')
+        if data.get('dueTime'):
+            data['due_time'] = data.get('dueTime')
+            
+        # Provide default due_date as model requires it
+        if not data.get('due_date'):
+            from django.utils import timezone
+            data['due_date'] = timezone.now().date().isoformat()
+            
+        # Handle assigned_to
+        assignees = data.get('assigneeIds', [])
+        assigned_to_user = request.user
+        if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
+            try:
+                from django.contrib.auth.models import User
+                assigned_to_user = User.objects.get(id=assignees[0])
+            except:
+                pass
+        elif 'assigned_to' in data and data['assigned_to']:
+            try:
+                from django.contrib.auth.models import User
+                assigned_to_user = User.objects.get(id=data['assigned_to'])
+            except:
+                pass
+
+        project_id = data.get('project_id')
         project = None
         if project_id:
             try:
@@ -351,12 +394,12 @@ class TaskViewSet(TenantModelViewSet):
                 defaults={'created_by': request.user, 'department': 'General'}
             )
             
-        serializer = self.get_serializer(data=request.data)
+        serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         from .models import Task, TaskChecklist
-        task = serializer.save(created_by=request.user, project=project, assigned_to=request.user, organization=org)
+        task = serializer.save(created_by=request.user, project=project, assigned_to=assigned_to_user, organization=org)
         
-        subtasks_data = request.data.get('subtasks', [])
+        subtasks_data = data.get('subtasks', [])
         if isinstance(subtasks_data, str):
             try:
                 subtasks_data = json.loads(subtasks_data)
@@ -396,7 +439,14 @@ class TaskViewSet(TenantModelViewSet):
     def update(self, request, *args, **kwargs):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
-        serializer = self.get_serializer(instance, data=request.data, partial=partial)
+        
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        if data.get('dueDate'):
+            data['due_date'] = data.get('dueDate')
+        if data.get('dueTime'):
+            data['due_time'] = data.get('dueTime')
+            
+        serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 

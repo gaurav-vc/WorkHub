@@ -18,6 +18,11 @@ class EmployeeViewSet(viewsets.ModelViewSet):
         context['request'] = self.request
         return context
 
+    def perform_create(self, serializer):
+        from core.tenant import get_current_organization
+        org = get_current_organization()
+        serializer.save(organization=org)
+
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])
     def upload_photo(self, request, pk=None):
         employee = self.get_object()

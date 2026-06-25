@@ -477,6 +477,38 @@ class CreateActiveUserView(APIView):
         except Exception as e:
             print(f"Error assigning organization: {e}")
 
+        # Send Email to the newly created active user
+        from django.core.mail import send_mail
+        from django.conf import settings
+        
+        frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+        subject = "Welcome to Anti Gravity - Account Details"
+        message = f"""Hello {user.get_full_name() or user.username},
+
+Your account has been created successfully.
+
+Here are your secure login credentials:
+Website URL: {frontend_url}
+Login ID: {user.email or user.username}
+Password: {password}
+
+Please log in to access your dashboard.
+
+Best regards,
+Anti Gravity Team
+"""
+        try:
+            if user.email:
+                send_mail(
+                    subject,
+                    message,
+                    getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
+                    [user.email],
+                    fail_silently=True,
+                )
+        except Exception as e:
+            print(f"Failed to send email to {user.email}: {e}")
+
         return Response({'message': 'User created successfully.', 'user_id': user.id}, status=status.HTTP_201_CREATED)
 
 
