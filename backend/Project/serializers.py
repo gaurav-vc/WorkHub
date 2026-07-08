@@ -46,7 +46,9 @@ class TaskSerializer(serializers.ModelSerializer):
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username
-        return "Unknown"
+        if getattr(obj, 'project', None) and getattr(obj.project, 'created_by', None):
+            return obj.project.created_by.get_full_name() or obj.project.created_by.username
+        return "System"
 
     def get_assignee_detail(self, obj):
         if obj.assigned_to:
@@ -120,8 +122,31 @@ class ProjectSerializer(serializers.ModelSerializer):
         if due_date:
             project.due_date = due_date
         project.save()
-        
         return project
+
+    def update(self, instance, validated_data):
+        tasks_data = validated_data.pop('tasks_data', None)
+        team_data = validated_data.pop('team_data', None)
+        due_date = validated_data.pop('due_date', None)
+        validated_data.pop('dueDate', None)
+
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+
+        if tasks_data is not None:
+            # Merge with existing tasks_data
+            current_tasks = instance.tasks_data if isinstance(instance.tasks_data, dict) else {}
+            current_tasks.update(tasks_data)
+            instance.tasks_data = current_tasks
+            
+        if team_data is not None:
+            instance.team_data = team_data
+            
+        if due_date is not None:
+            instance.due_date = due_date
+            
+        instance.save()
+        return instance
 
 class ActivityLogSerializer(serializers.ModelSerializer):
     user_name = serializers.SerializerMethodField()

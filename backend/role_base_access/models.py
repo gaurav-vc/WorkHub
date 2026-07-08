@@ -15,6 +15,7 @@ class Role(TenantModel):
     can_approve = models.BooleanField(default=False)
     cross_department_access = models.BooleanField(default=False)
     status = models.CharField(max_length=20, default='Active')
+    permissions = models.JSONField(default=dict, blank=True)
 
     def __str__(self):
         return f"{self.name} ({self.code})"

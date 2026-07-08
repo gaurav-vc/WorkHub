@@ -43,6 +43,9 @@ class HRRequestSerializer(serializers.ModelSerializer):
         if user.is_superuser:
             return True
 
+        if obj.user and hasattr(obj.user, 'auth_profile') and obj.user.auth_profile.reporting_to == user:
+            return True
+
         try:
             profile = getattr(user, 'auth_profile', None)
             if profile and profile.role_relationship and profile.role_relationship.can_approve:

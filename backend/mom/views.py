@@ -48,41 +48,7 @@ class MOMViewSet(viewsets.ModelViewSet):
             email = request.data.get('email')
             phone = request.data.get('phone')
             attendee = MOMAttendee.objects.create(mom=mom, is_external=True, name=name, email=email, phone=phone, organization=mom.organization)
-            
-            # Send Email Trigger for External Attendee
-            if email:
-                from django.template.loader import render_to_string
-                from django.utils.html import strip_tags
-                from django.conf import settings
-                
-                context = {
-                    'mom': mom,
-                    'attendee_name': name,
-                    'meeting_date': mom.meeting_date,
-                    'start_time': mom.start_time,
-                    'end_time': mom.end_time,
-                    'client_name': mom.client_name,
-                    'site_name': mom.site_name,
-                    'location': mom.location,
-                    'meeting_type': mom.meeting_type,
-                    'prepared_by': mom.prepared_by,
-                    'agendas': mom.agendas.all(),
-                    'points': mom.points.all(),
-                    'attendees': mom.attendees.all()
-                }
-                try:
-                    html_message = render_to_string('mom_email.html', context)
-                    plain_message = strip_tags(html_message)
-                    send_mail(
-                        subject=f"Minutes of Meeting: {mom.title}",
-                        message=plain_message,
-                        from_email=settings.DEFAULT_FROM_EMAIL,
-                        recipient_list=[email],
-                        html_message=html_message,
-                        fail_silently=False,
-                    )
-                except Exception as e:
-                    print(f"Error sending external attendee email: {e}")
+            # The email will be sent later in send_notifications when the MOM is finalized.
         else:
             user_id = request.data.get('user_id')
             user = User.objects.get(id=user_id)

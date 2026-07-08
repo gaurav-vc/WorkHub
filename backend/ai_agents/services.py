@@ -10,7 +10,7 @@ from MyDay.views import get_ai_context_data
 
 class AIGatewayService:
     def __init__(self):
-        self.api_key = getattr(settings, 'GEMINI_API_KEY', os.environ.get('VITE_GEMINI_API_KEY', 'AQ.Ab8RN6JD3f3nMH_Bx_y3JXdMsK3JOi4B9rZeHA5EvGvaXAFLZw'))
+        self.api_key = getattr(settings, 'GEMINI_API_KEY', os.environ.get('GEMINI_API_KEY', ''))
         genai.configure(api_key=self.api_key)
         self.models_to_try = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro", "gemini-2.0-flash"]
 
@@ -27,12 +27,12 @@ class AIGatewayService:
                 raise e
         raise last_err
 
-    def try_start_chat(self, history, prompt):
+    def try_start_chat(self, history, prompt, tools=None):
         last_err = None
         for model_name in self.models_to_try:
             try:
-                model = genai.GenerativeModel(model_name)
-                chat = model.start_chat(history=history)
+                model = genai.GenerativeModel(model_name, tools=tools)
+                chat = model.start_chat(history=history, enable_automatic_function_calling=bool(tools))
                 return chat.send_message(prompt)
             except Exception as e:
                 last_err = e
@@ -51,9 +51,21 @@ class AIGatewayService:
 
     def get_system_prompt(self, request, agent_type):
         live_data = get_ai_context_data(request.user)
+        import sqlite3
+        try:
+            conn = sqlite3.connect('db.sqlite3')
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' AND name NOT LIKE 'django_%' AND name NOT LIKE 'auth_%'")
+            tables = cursor.fetchall()
+            conn.close()
+            schema = "Database Tables: " + ", ".join([t[0] for t in tables])
+        except Exception:
+            schema = ""
         
-        prompt = f"You are a helpful AI Assistant acting as a {agent_type} agent inside CollabHub SaaS platform.\n"
+        prompt = f"You are a super powerful AI Assistant acting as a {agent_type} agent inside CollabHub SaaS platform.\n"
+        prompt += f"You have direct access to the database via tools to read data ({schema}) and create records. Be proactive.\n"
         prompt += f"Format your response cleanly. Base your answers strictly on this live data if possible. Do not make up tasks, meetings, or HR records.\n"
+        prompt += f"CRITICAL: You are restricted to local database operations only (fetching data, creating tasks/meetings). If the user asks you to do ANYTHING else (e.g., browse the web, write essays, use external APIs, or complex tasks that use heavy tokens), you MUST reply exactly with 'This feature is coming soon'.\n"
         prompt += json.dumps(live_data, indent=2)
         return prompt, live_data
 
@@ -245,7 +257,73 @@ class AIGatewayService:
         try:
             full_prompt = f"System Context: {system_prompt}\n\nUser: {user_message}"
             
-            result = self.try_start_chat(history, full_prompt)
+            def execute_sql_query(query: str) -> str:
+                """Executes a SQL SELECT query against the local SQLite database and returns the results. Do not use for INSERT/UPDATE/DELETE."""
+                import sqlite3
+                try:
+                    if not query.strip().lower().startswith('select'):
+                        return 'Error: Only SELECT queries are permitted.'
+                    conn = sqlite3.connect('db.sqlite3')
+                    cursor = conn.cursor()
+                    cursor.execute(query)
+                    results = cursor.fetchall()
+                    if not results:
+                        conn.close()
+                        return 'No results found.'
+                    columns = [desc[0] for desc in cursor.description]
+                    conn.close()
+                    output = f"Columns: {', '.join(columns)}\n"
+                    for row in results[:50]:
+                        output += str(row) + "\n"
+                    return output
+                except Exception as e:
+                    return f"Database Error: {str(e)}"
+            
+            def create_task_tool(title: str, description: str, due_date: str, assignee_email: str = "") -> str:
+                """Creates a new Task in the system. due_date format: YYYY-MM-DD."""
+                from Project.models import Task
+                from django.contrib.auth.models import User
+                try:
+                    user = None
+                    if assignee_email:
+                        user = User.objects.filter(email=assignee_email).first()
+                    task = Task.objects.create(
+                        title=title,
+                        description=description,
+                        due_date=due_date,
+                        assigned_to=user,
+                        created_by=request.user,
+                        status='pending'
+                    )
+                    return f"Success! Task '{title}' created with ID {task.id}."
+                except Exception as e:
+                    return f"Error creating task: {str(e)}"
+
+            def create_meeting_tool(title: str, datetime_iso: str, attendee_emails: list[str]) -> str:
+                """Creates a new Meeting in the calendar. datetime_iso format: YYYY-MM-DDTHH:MM:SS (e.g. 2026-07-05T10:00:00). attendee_emails is a list of strings."""
+                from calendar_meeting.models import Meeting
+                from django.contrib.auth.models import User
+                try:
+                    meeting = Meeting.objects.create(
+                        title=title,
+                        meeting_time=datetime_iso,
+                        organizer=request.user,
+                        meeting_type='internal'
+                    )
+                    added = []
+                    for email in attendee_emails:
+                        user = User.objects.filter(email=email).first()
+                        if user:
+                            meeting.attendees.add(user)
+                            added.append(email)
+                    meeting.save()
+                    return f"Success! Meeting '{title}' created on {datetime_iso}. Attendees added: {', '.join(added) if added else 'None'}."
+                except Exception as e:
+                    return f"Error creating meeting: {str(e)}"
+
+            tools = [execute_sql_query, create_task_tool, create_meeting_tool]
+            
+            result = self.try_start_chat(history, full_prompt, tools=tools)
             response_text = result.text
             
             estimated_tokens = len(full_prompt + response_text) // 4

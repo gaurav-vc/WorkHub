@@ -46,6 +46,22 @@ class TemplateViewSet(viewsets.ModelViewSet):
         tasks_data = data.pop('tasks', [])
         columns_data = data.pop('columns', [])
         
+        # Auto-resolve category name to ID
+        category_val = data.get('category')
+        if category_val and isinstance(category_val, str) and not category_val.isdigit():
+            from .models import TemplateCategory
+            from django.utils.text import slugify
+            cat, created = TemplateCategory.objects.get_or_create(
+                title=category_val,
+                defaults={'slug': slugify(category_val)}
+            )
+            data['category'] = cat.id
+            
+        if 'title' in data and not data.get('slug'):
+            from django.utils.text import slugify
+            import uuid
+            data['slug'] = f"{slugify(data['title'])}-{uuid.uuid4().hex[:6]}"
+            
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         

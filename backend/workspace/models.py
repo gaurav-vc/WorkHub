@@ -2,6 +2,7 @@ from django.db import models
 from core.tenant import TenantModel
 
 class Notification(TenantModel):
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='notifications', null=True, blank=True)
     type = models.CharField(max_length=50)
     title = models.CharField(max_length=255)
     message = models.TextField()

@@ -78,6 +78,19 @@ class MessageViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         # Safely assign the user if they are logged in, otherwise save it as an anonymous message
         if self.request.user.is_authenticated:
-            serializer.save(user=self.request.user)
+            message = serializer.save(user=self.request.user)
+            
+            # Send targeted notifications to other members
+            from workspace.models import Notification
+            channel = message.channel
+            # Members to notify (exclude sender)
+            members = channel.members.exclude(id=self.request.user.id)
+            for member in members:
+                Notification.objects.create(
+                    user=member,
+                    type='alert',
+                    title=f"New Message in #{channel.name}",
+                    message=f"{self.request.user.get_full_name() or self.request.user.username}: {message.content[:50]}"
+                )
         else:
             serializer.save()

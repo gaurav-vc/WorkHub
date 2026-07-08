@@ -31,6 +31,7 @@ def dashboard(request):
 
     today = timezone.now().date()
 
+    # ── Current User Profile ─────────────────────────────────────────────────
     try:
         profile_data = UserProfileSerializer(user.auth_profile).data
     except Exception:
@@ -42,10 +43,15 @@ def dashboard(request):
             "leave_balance": 0,
         }
 
+    # Ensure the name is always the actual logged-in user's name, never someone else's
+    if not profile_data.get("name") or profile_data["name"] in ("", None):
+        profile_data["name"] = user.get_full_name() or user.username
+
     visible_users = get_visible_users(user)
 
+    # ── Tasks: only the current user's assigned tasks ────────────────────────
     cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:50]
-    
+
     today_tasks_data = []
     for c in cards_qs:
         today_tasks_data.append({
@@ -59,35 +65,54 @@ def dashboard(request):
 
     pending_tasks_count = Card.objects.filter(assignee=user, status__in=['pending', 'in_progress']).count()
 
+    # ── Meetings: only meetings the current user is part of ──────────────────
+    # Do NOT include meetings by other visible_users — that leaks data.
     meetings_qs = Meeting.objects.filter(
-        Q(attendees=user) | Q(organizer=user) | Q(organizer__in=visible_users),
+        Q(attendees=user) | Q(organizer=user),
         meeting_time__date__gte=today
     ).distinct().order_by('meeting_time')[:5]
-    
-    activity_qs = TeamActivity.objects.filter(user__in=visible_users).select_related('user').order_by('-created_at')[:5]
-    
-    approvals_qs = Approval.objects.filter(approver=user, status='pending').select_related('requester')
-    quick_links_qs = QuickLink.objects.filter(user=user)
 
-    # Sync HR Requests into Dashboard Pending Approvals
-    # For a real app, you would check if the user is an Admin/Manager.
-    # We will only show requests if the user is the approver, or if they are admin/manager and the request is from visible_users
-    if user.is_superuser or user.is_staff:
-        hr_requests_qs = HRRequest.objects.filter(status='pending').select_related('user')
-    else:
-        hr_requests_qs = HRRequest.objects.filter(user__in=visible_users, status='pending').select_related('user')
+    # ── Team Activity: scoped to visible users in the same org ───────────────
+    # This is intentionally shared (like a social feed) — shows what teammates did.
+    activity_qs = TeamActivity.objects.filter(user__in=visible_users).select_related('user').order_by('-created_at')[:5]
+
+    # ── Pending Approvals: only approvals where THIS user is the approver ────
+    approvals_qs = Approval.objects.filter(approver=user, status='pending').select_related('requester')
+
+    # ── HR Requests: only show to managers / admins / superusers ────────────
+    auth_profile = getattr(user, 'auth_profile', None)
+    user_role = getattr(auth_profile, 'role', None)
+    is_admin_or_manager = (
+        user.is_superuser
+        or user.is_staff
+        or (user_role and user_role.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
+        if auth_profile and getattr(auth_profile, 'role_relationship', None)
+        else user.is_superuser or user.is_staff
+    )
+
     hr_approvals_data = []
-    for hr in hr_requests_qs:
-        requester_name = hr.user.get_full_name() or hr.user.username if hr.user else "Unknown User"
-        hr_approvals_data.append({
-            "id": f"hr_{hr.id}",
-            "type": hr.type,
-            "requester": requester_name,
-            "detail": hr.detail or hr.title,
-            "status": hr.status
-        })
-        
+    if is_admin_or_manager:
+        if user.is_superuser or user.is_staff:
+            hr_requests_qs = HRRequest.objects.filter(status='pending').select_related('user')
+        else:
+            # Only show HR requests from users in their visible scope
+            hr_requests_qs = HRRequest.objects.filter(
+                user__in=visible_users, status='pending'
+            ).exclude(user=user).select_related('user')
+
+        for hr in hr_requests_qs:
+            requester_name = hr.user.get_full_name() or hr.user.username if hr.user else "Unknown User"
+            hr_approvals_data.append({
+                "id": f"hr_{hr.id}",
+                "type": hr.type,
+                "requester": requester_name,
+                "detail": hr.detail or hr.title,
+                "status": hr.status,
+            })
+
     combined_approvals = ApprovalSerializer(approvals_qs, many=True).data + hr_approvals_data
+
+    quick_links_qs = QuickLink.objects.filter(user=user)
 
     leave_balance = getattr(getattr(user, 'profile', None), 'leave_balance', 0)
     summary = {
@@ -106,6 +131,7 @@ def dashboard(request):
         "pendingApprovals": combined_approvals,
         "quickLinks": QuickLinkSerializer(quick_links_qs, many=True).data,
     })
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])

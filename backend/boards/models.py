@@ -45,6 +45,32 @@ class Card(models.Model):
     def __str__(self):
         return self.title
 
+    def save(self, *args, **kwargs):
+        is_new = self.pk is None
+        newly_assigned_user = None
+
+        if not is_new:
+            old_card = Card.objects.get(pk=self.pk)
+            if old_card.assignee != self.assignee and self.assignee:
+                newly_assigned_user = self.assignee
+        else:
+            if self.assignee:
+                newly_assigned_user = self.assignee
+
+        super().save(*args, **kwargs)
+
+        if newly_assigned_user:
+            try:
+                from workspace.models import Notification
+                Notification.objects.create(
+                    type="card_assigned",
+                    title="Card Assigned",
+                    message=f"@{newly_assigned_user.username} has been assigned to card '{self.title}'",
+                    link="/collaboration"
+                )
+            except Exception as e:
+                print(f"Error creating notification: {e}")
+
 class CardChecklist(models.Model):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='checklists')
     title = models.CharField(max_length=255)

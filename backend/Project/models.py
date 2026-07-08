@@ -63,6 +63,7 @@ class ActivityLog(TenantModel):
         return f'{self.user} {self.action} on {self.content_object}'
 
 from django.core.exceptions import ValidationError
+from django.utils import timezone
 
 class Task(TenantModel):
     PRIORITY_CHOICES = [
@@ -94,6 +95,7 @@ class Task(TenantModel):
     due_time = models.TimeField(null=True, blank=True)
     description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
+    completion_date = models.DateTimeField(null=True, blank=True)
     
     start_day = models.IntegerField(default=0)
     duration = models.IntegerField(default=3)
@@ -114,6 +116,7 @@ class Task(TenantModel):
         is_new = self.pk is None
         status_changed_to_done = False
         status_changed_to_delayed = False
+        newly_assigned_user = None
 
         if not is_new:
             old_task = Task.objects.get(pk=self.pk)
@@ -121,10 +124,19 @@ class Task(TenantModel):
                 status_changed_to_done = True
             if old_task.status != 'delayed' and self.status == 'delayed':
                 status_changed_to_delayed = True
+            if old_task.assigned_to != self.assigned_to and self.assigned_to:
+                newly_assigned_user = self.assigned_to
         elif self.status in ['done', 'completed']:
             status_changed_to_done = True
+            if self.assigned_to:
+                newly_assigned_user = self.assigned_to
         elif self.status == 'delayed':
             status_changed_to_delayed = True
+            if self.assigned_to:
+                newly_assigned_user = self.assigned_to
+        else:
+            if self.assigned_to:
+                newly_assigned_user = self.assigned_to
 
         if self.status in ['done', 'completed'] and self.pk:
             incomplete_deps = self.blocking_dependencies.exclude(status__in=['done', 'completed'])
@@ -133,7 +145,21 @@ class Task(TenantModel):
 
         super().save(*args, **kwargs)
 
+        if newly_assigned_user:
+            try:
+                from workspace.models import Notification
+                Notification.objects.create(
+                    type="task_assigned",
+                    title="Task Assigned",
+                    message=f"@{newly_assigned_user.username} has been assigned to task '{self.title}'",
+                    link="/projects"
+                )
+            except Exception as e:
+                print(f"Error creating notification: {e}")
+
         if status_changed_to_done:
+            if not self.completion_date:
+                self.completion_date = timezone.now()
             target_user = self.assigned_to or self.created_by
             if target_user and hasattr(target_user, 'auth_profile'):
                 profile = target_user.auth_profile

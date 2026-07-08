@@ -50,6 +50,7 @@ class UserViewSet(viewsets.ModelViewSet):
             dept = ''
             role = ''
             emp_id = ''
+            manager_id = 'none'
             status_val = 'Active' if u.is_active else 'Inactive'
             try:
                 emp = getattr(u, 'res_employee', None)
@@ -57,6 +58,10 @@ class UserViewSet(viewsets.ModelViewSet):
                     dept = emp.department.name if emp.department else ''
                     role = emp.role
                     emp_id = f"EMP{u.id:03d}"
+                
+                auth_prof = getattr(u, 'auth_profile', None)
+                if auth_prof and auth_prof.reporting_to_id:
+                    manager_id = str(auth_prof.reporting_to_id)
             except Exception:
                 pass
             data.append({
@@ -66,6 +71,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 'email': u.email,
                 'dept': dept,
                 'role': role,
+                'manager_id': manager_id,
                 'status': status_val,
                 'is_superuser': u.is_superuser
             })
@@ -128,6 +134,17 @@ class UserViewSet(viewsets.ModelViewSet):
             org_profile.save()
         except Exception as e:
             print(f"Error assigning organization in UserViewSet: {e}")
+            
+        # Assign Reporting Manager
+        try:
+            from authentication.models import UserProfile as AuthUserProfile
+            auth_profile, _ = AuthUserProfile.objects.get_or_create(user=user)
+            manager_id = data.get('manager_id')
+            if manager_id and str(manager_id) != 'none':
+                auth_profile.reporting_to_id = manager_id
+            auth_profile.save()
+        except Exception as e:
+            print(f"Error setting manager in UserViewSet: {e}")
             
         # Send Email
         from django.core.mail import send_mail
@@ -221,6 +238,19 @@ Team WorkHub
                 org_profile.save()
         except Exception as e:
             print(f"Error updating organization in UserViewSet: {e}")
+
+        # Assign Reporting Manager
+        try:
+            from authentication.models import UserProfile as AuthUserProfile
+            auth_profile, _ = AuthUserProfile.objects.get_or_create(user=user)
+            manager_id = data.get('manager_id')
+            if manager_id and str(manager_id) != 'none':
+                auth_profile.reporting_to_id = manager_id
+            else:
+                auth_profile.reporting_to = None
+            auth_profile.save()
+        except Exception as e:
+            print(f"Error setting manager in UserViewSet: {e}")
             
         return Response({'id': user.id, 'name': user.get_full_name(), 'email': user.email})
 

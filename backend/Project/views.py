@@ -20,15 +20,21 @@ def project_list_create(request):
         except Exception:
             pass
 
+        # 1. Base organization filter
+        base_q = Q(created_by__in=visible_users)
+
+        # 2. Strict access scope filtering
+        scope_q = Q(department__in=['all', 'Entire Organization', ''])
+        
         if request.user and request.user.is_authenticated:
-            q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
-        else:
-            q = Q(department='all') | Q(created_by__in=visible_users)
+            scope_q |= Q(created_by=request.user)
             
         if user_dept:
-            q |= Q(department__iexact=user_dept)
+            scope_q |= Q(department__iexact=user_dept)
             
-        projects = Project.objects.filter(q).distinct().order_by('-created_at')
+        q = base_q & scope_q
+            
+        projects = Project.objects.filter(q).exclude(name__iexact="General Workspace").distinct().order_by('-created_at')
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data)
 
@@ -75,13 +81,19 @@ def project_detail(request, project_id):
     except Exception:
         pass
 
+    # 1. Base organization filter
+    base_q = Q(created_by__in=visible_users)
+
+    # 2. Strict access scope filtering
+    scope_q = Q(department__in=['all', 'Entire Organization', ''])
+    
     if request.user and request.user.is_authenticated:
-        q = Q(created_by=request.user) | Q(department='all') | Q(created_by__in=visible_users)
-    else:
-        q = Q(department='all') | Q(created_by__in=visible_users)
+        scope_q |= Q(created_by=request.user)
         
     if user_dept:
-        q |= Q(department__iexact=user_dept)
+        scope_q |= Q(department__iexact=user_dept)
+        
+    q = base_q & scope_q
 
     try:
         project = Project.objects.filter(q, id=project_id).distinct().first()

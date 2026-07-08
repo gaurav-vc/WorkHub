@@ -69,7 +69,9 @@ class CardSerializer(serializers.ModelSerializer):
         created_by = getattr(obj, 'created_by', None)
         if created_by:
             return created_by.get_full_name() or created_by.username
-        return "Unknown"
+        if getattr(obj, 'column', None) and getattr(obj.column, 'board', None) and getattr(obj.column.board, 'owner', None):
+            return obj.column.board.owner.get_full_name() or obj.column.board.owner.username
+        return "System"
 
     def get_assignee_detail(self, obj):
         assignee = getattr(obj, 'assignee', None)

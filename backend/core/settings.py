@@ -1,4 +1,12 @@
+import os
 from pathlib import Path
+
+# Load environment variables from .env file (if present)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / '.env')
+except ImportError:
+    pass  # python-dotenv not installed; rely on system environment variables
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -191,9 +199,15 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'gauravkokane420op@gmail.com'
-EMAIL_HOST_PASSWORD = 'eghz tvac jrrl ximw'
-DEFAULT_FROM_EMAIL = 'gauravkokane420op@gmail.com'
+EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gauravkokane420op@gmail.com')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+DEFAULT_FROM_EMAIL = f'WorkHub <{EMAIL_HOST_USER}>'
+
+# Frontend URL (used in emails)
+FRONTEND_URL = 'http://localhost:5173'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
+
+# AI Settings — set GEMINI_API_KEY in your environment or .env file
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')

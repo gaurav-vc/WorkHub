@@ -478,34 +478,129 @@ class CreateActiveUserView(APIView):
             print(f"Error assigning organization: {e}")
 
         # Send Email to the newly created active user
-        from django.core.mail import send_mail
+        from django.core.mail import EmailMultiAlternatives
         from django.conf import settings
-        
+
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-        subject = "Welcome to Anti Gravity - Account Details"
-        message = f"""Hello {user.get_full_name() or user.username},
+        display_name = user.get_full_name() or username
+        subject = "Welcome to WorkHub – Your Account Details"
 
-Your account has been created successfully.
+        text_body = f"""Hello {display_name},
 
-Here are your secure login credentials:
-Website URL: {frontend_url}
-Login ID: {user.email or user.username}
-Password: {password}
+Your WorkHub account has been created successfully.
+
+Login URL : {frontend_url}
+Login ID  : {user.email or username}
+Password  : {password}
 
 Please log in to access your dashboard.
 
 Best regards,
-Anti Gravity Team
+The WorkHub Team
 """
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;letter-spacing:-0.5px;">&#x2728; WorkHub</h1>
+            <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:15px;">Enterprise Workspace Platform</p>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 8px;color:#1e1b4b;font-size:22px;">Welcome, {display_name}! &#x1F44B;</h2>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">
+              Your <strong>WorkHub</strong> account has been created. Use the credentials below to log in.
+            </p>
+
+            <!-- Credentials Box -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f7ff;border:1px solid #e0e7ff;border-radius:10px;margin-bottom:28px;">
+              <tr>
+                <td style="padding:24px 28px;">
+                  <p style="margin:0 0 16px;color:#374151;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Your Login Credentials</p>
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;width:120px;">&#x1F310; Website</td>
+                      <td style="padding:6px 0;">
+                        <a href="{frontend_url}" style="color:#4f46e5;font-weight:600;font-size:14px;text-decoration:none;">{frontend_url}</a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;">&#x1F4E7; Login ID</td>
+                      <td style="padding:6px 0;color:#111827;font-weight:600;font-size:14px;">{user.email or username}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;">&#x1F512; Password</td>
+                      <td style="padding:6px 0;">
+                        <code style="background:#eef2ff;color:#4f46e5;padding:3px 10px;border-radius:5px;font-size:15px;font-weight:700;letter-spacing:1px;">{password}</code>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- CTA Button -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="padding-bottom:28px;">
+                  <a href="{frontend_url}" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-size:16px;font-weight:600;letter-spacing:0.3px;">
+                    Login to WorkHub &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Info -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;">
+              <tr>
+                <td style="padding:14px 18px;color:#166534;font-size:13px;line-height:1.5;">
+                  &#x2705; Your account is active and ready to use. For security, consider updating your password after login.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">
+              &copy; 2025 WorkHub &bull; This email was sent because an account was created for you.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
         try:
             if user.email:
-                send_mail(
-                    subject,
-                    message,
-                    getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
-                    [user.email],
-                    fail_silently=True,
+                email_msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_body,
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
+                    to=[user.email],
                 )
+                email_msg.attach_alternative(html_body, "text/html")
+                email_msg.send(fail_silently=False)
+                print(f"Welcome email sent to new user: {user.email}")
         except Exception as e:
             print(f"Failed to send email to {user.email}: {e}")
 
@@ -563,33 +658,128 @@ class CreateAdminView(APIView):
                 profile.save()
 
         # Send Email
-        from django.core.mail import send_mail
+        from django.core.mail import EmailMultiAlternatives
         from django.conf import settings
-        subject = "Welcome to Anti Gravity - Admin Account Details"
         frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
-        message = f"""Hello {user.get_full_name() or user.username},
+        display_name = user.get_full_name() or username
+        subject = "Welcome to WorkHub – Your Admin Account Details"
 
-Your Administrator account has been created successfully.
+        text_body = f"""Hello {display_name},
 
-Here are your secure login credentials:
-Website URL: {frontend_url}
-Login ID (Email): {user.email or user.username}
-Temporary Password: {temp_password}
+Your WorkHub Administrator account has been created.
 
-Please log in and reset your password immediately.
+Login URL : {frontend_url}
+Login ID  : {user.email or username}
+Password  : {temp_password}
+
+Please log in and change your password immediately.
 
 Best regards,
-Anti Gravity Team
+The WorkHub Team
 """
+
+        html_body = f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+</head>
+<body style="margin:0;padding:0;background:#f4f6f9;font-family:'Segoe UI',Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f6f9;padding:40px 0;">
+    <tr><td align="center">
+      <table width="600" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.08);">
+
+        <!-- Header -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 100%);padding:40px 40px 30px;text-align:center;">
+            <h1 style="margin:0;color:#ffffff;font-size:28px;font-weight:700;letter-spacing:-0.5px;">&#x2728; WorkHub</h1>
+            <p style="margin:8px 0 0;color:rgba(255,255,255,0.8);font-size:15px;">Enterprise Workspace Platform</p>
+          </td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:40px;">
+            <h2 style="margin:0 0 8px;color:#1e1b4b;font-size:22px;">Welcome, {display_name}! &#x1F44B;</h2>
+            <p style="margin:0 0 24px;color:#6b7280;font-size:15px;line-height:1.6;">
+              Your <strong>WorkHub Administrator</strong> account has been created. Use the credentials below to log in.
+            </p>
+
+            <!-- Credentials Box -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#f8f7ff;border:1px solid #e0e7ff;border-radius:10px;margin-bottom:28px;">
+              <tr>
+                <td style="padding:24px 28px;">
+                  <p style="margin:0 0 16px;color:#374151;font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:0.8px;">Your Login Credentials</p>
+                  <table cellpadding="0" cellspacing="0">
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;width:120px;">&#x1F310; Website</td>
+                      <td style="padding:6px 0;">
+                        <a href="{frontend_url}" style="color:#4f46e5;font-weight:600;font-size:14px;text-decoration:none;">{frontend_url}</a>
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;">&#x1F4E7; Login ID</td>
+                      <td style="padding:6px 0;color:#111827;font-weight:600;font-size:14px;">{user.email or username}</td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;color:#6b7280;font-size:14px;">&#x1F512; Password</td>
+                      <td style="padding:6px 0;">
+                        <code style="background:#eef2ff;color:#4f46e5;padding:3px 10px;border-radius:5px;font-size:15px;font-weight:700;letter-spacing:1px;">{temp_password}</code>
+                      </td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+
+            <!-- CTA Button -->
+            <table width="100%" cellpadding="0" cellspacing="0">
+              <tr>
+                <td align="center" style="padding-bottom:28px;">
+                  <a href="{frontend_url}" style="display:inline-block;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#ffffff;text-decoration:none;padding:14px 40px;border-radius:8px;font-size:16px;font-weight:600;letter-spacing:0.3px;">
+                    Login to WorkHub &rarr;
+                  </a>
+                </td>
+              </tr>
+            </table>
+
+            <!-- Warning -->
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#fefce8;border:1px solid #fde68a;border-radius:8px;">
+              <tr>
+                <td style="padding:14px 18px;color:#92400e;font-size:13px;line-height:1.5;">
+                  &#x26A0;&#xFE0F; <strong>Important:</strong> This is a temporary password. Please change it immediately after your first login.
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9fafb;padding:20px 40px;text-align:center;border-top:1px solid #e5e7eb;">
+            <p style="margin:0;color:#9ca3af;font-size:12px;">
+              &copy; 2025 WorkHub &bull; This email was sent because an admin account was created for you.
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>"""
+
         try:
             if user.email:
-                send_mail(
-                    subject,
-                    message,
-                    getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@antigravity.com'),
-                    [user.email],
-                    fail_silently=True,
+                email_msg = EmailMultiAlternatives(
+                    subject=subject,
+                    body=text_body,
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
+                    to=[user.email],
                 )
+                email_msg.attach_alternative(html_body, "text/html")
+                email_msg.send(fail_silently=False)
+                print(f"Welcome email sent to admin: {user.email}")
         except Exception as e:
             print(f"Failed to send email to {user.email}: {e}")
 

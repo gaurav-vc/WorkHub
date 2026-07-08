@@ -4,12 +4,13 @@ from .serializers import RiskIndicatorSerializer
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
-from django.db.models import Count, Avg, Q
+from django.db.models import Count, Avg, Q, F
 from directory.models import Employee
 from Project.models import Task
 from django.utils import timezone
 from datetime import timedelta
 import calendar
+from resources.models import Department
 
 class RiskIndicatorViewSet(viewsets.ModelViewSet):
     queryset = RiskIndicator.objects.all().order_by('id')
@@ -54,9 +55,11 @@ def insight_stats(request):
         team_utilization = "0%"
 
     # 3. On-Time Delivery
-    completed_tasks = Task.objects.filter(status__in=['done', 'completed']).count()
-    if completed_tasks > 0:
-        on_time = 80 + (completed_tasks % 20)
+    completed_tasks = Task.objects.filter(status__in=['done', 'completed'])
+    total_completed = completed_tasks.count()
+    if total_completed > 0:
+        on_time_tasks = completed_tasks.filter(completion_date__date__lte=F('due_date')).count()
+        on_time = int((on_time_tasks / total_completed) * 100)
         on_time_delivery = f"{on_time}%"
     else:
         on_time_delivery = "N/A"
@@ -84,6 +87,12 @@ def insight_stats(request):
 
     # 6. Resource Forecasting (last 6 months distribution)
     resourceData = []
+    
+    # Get all active departments for the charts
+    all_depts = list(Department.objects.values_list('name', flat=True))
+    if not all_depts:
+        all_depts = ["Unassigned"]
+
     for i in range(5, -1, -1):
         month_date = now - timedelta(days=i*30)
         month_name = month_date.strftime('%b')
@@ -94,25 +103,27 @@ def insight_stats(request):
         month_tasks = Task.objects.filter(created_at__gte=start_date, created_at__lt=end_date)
         dept_counts = month_tasks.values('project__department').annotate(count=Count('id'))
         
-        entry = {"month": month_name, "engineering": 0, "design": 0, "product": 0, "sales": 0}
+        entry = {"month": month_name}
+        for d in all_depts:
+            entry[d] = 0
+            
+        has_data = False
         for d in dept_counts:
-            d_name = (d['project__department'] or "").lower()
-            val = d['count']
-            if 'engineer' in d_name:
-                entry['engineering'] += val
-            elif 'design' in d_name:
-                entry['design'] += val
-            elif 'product' in d_name:
-                entry['product'] += val
-            elif 'sale' in d_name:
-                entry['sales'] += val
-            else:
-                entry['engineering'] += val
+            d_name = d['project__department']
+            if not d_name:
+                d_name = "Unassigned"
+                
+            if d_name not in entry:
+                entry[d_name] = 0
+            entry[d_name] += d['count']
+            has_data = True
                 
         # If no data at all, provide a tiny baseline to show the chart structure
-        if entry['engineering'] == 0 and entry['design'] == 0 and entry['product'] == 0 and entry['sales'] == 0:
-            entry['engineering'] = 5
-            entry['design'] = 2
+        if not has_data and len(all_depts) > 0:
+            entry[all_depts[0]] = 5
+            if len(all_depts) > 1:
+                entry[all_depts[1]] = 2
+                
         resourceData.append(entry)
 
     # 7. Risk Indicators
@@ -124,7 +135,7 @@ def insight_stats(request):
             "title": f"{overdue_tasks} overdue tasks",
             "severity": "high" if overdue_tasks > 5 else "medium",
             "description": "Tasks have passed their due date and remain incomplete.",
-            "department": "Engineering"
+            "department": all_depts[0] if all_depts else "Various"
         })
         
     if total_employees > 0 and (active_emps / total_employees) > 0.95:
@@ -143,6 +154,7 @@ def insight_stats(request):
         "avgTaskDuration": avg_task_duration,
         "taskCompletionData": taskCompletionData,
         "resourceData": resourceData,
+        "departmentNames": all_depts,
         "riskIndicators": riskIndicators,
         "risk_count": len(riskIndicators)
     })

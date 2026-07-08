@@ -24,12 +24,8 @@ class HRRequestViewSet(viewsets.ModelViewSet):
         if view_scope == 'all':
             return HRRequest.objects.all().order_by('-created_at')
 
-        if view_scope == 'team':
-            team_users = get_team_users(user)
-            return HRRequest.objects.filter(Q(user=user) | Q(user__in=team_users)).distinct().order_by('-created_at')
-
-        # 'own' scope
-        return HRRequest.objects.filter(user=user).order_by('-created_at')
+        team_users = get_team_users(user)
+        return HRRequest.objects.filter(Q(user=user) | Q(user__in=team_users)).distinct().order_by('-created_at')
 
     def perform_create(self, serializer):
         user = self.request.user
@@ -60,22 +56,65 @@ class HRRequestViewSet(viewsets.ModelViewSet):
             note='Request created successfully.'
         )
 
+        if hr_request.type == 'Leave':
+            start_date_str = hr_request.form_data.get('startDate')
+            end_date_str = hr_request.form_data.get('endDate')
+            
+            if start_date_str:
+                from dateutil.parser import parse as dateutil_parse
+                from calendar_meeting.models import Meeting
+                from django.utils import timezone
+                import datetime
+                
+                try:
+                    start_dt = dateutil_parse(start_date_str)
+                    if timezone.is_naive(start_dt):
+                        start_dt = timezone.make_aware(start_dt)
+                        
+                    end_dt = None
+                    if end_date_str:
+                        end_dt = dateutil_parse(end_date_str)
+                        if timezone.is_naive(end_dt):
+                            end_dt = timezone.make_aware(end_dt)
+                    else:
+                        end_dt = start_dt
+
+                    # Calculate duration in days
+                    delta = (end_dt.date() - start_dt.date()).days
+                    if delta < 0: delta = 0
+                    duration_str = f"{delta + 1} day(s)"
+                    
+                    Meeting.objects.create(
+                        title=f"[Pending Leave] {hr_request.title}",
+                        description=hr_request.detail,
+                        organizer=target_user,
+                        meeting_time=start_dt,
+                        end_time=end_dt,
+                        duration=duration_str,
+                        meeting_type='event',
+                        platform=f"HRRequest:{hr_request.id}"
+                    )
+                except Exception as e:
+                    print(f"Error syncing leave to calendar: {e}")
+
     def perform_update(self, serializer):
         old_instance = self.get_object()
         user = self.request.user
         perms = get_hr_permissions(user)
         edit_scope = perms.get('edit', 'none')
+        is_direct_manager = old_instance.user and hasattr(old_instance.user, 'auth_profile') and old_instance.user.auth_profile.reporting_to == user
 
-        if edit_scope == 'none':
-            raise PermissionDenied("You do not have permission to edit HR requests.")
+        if not is_direct_manager:
+            if edit_scope == 'none':
+                raise PermissionDenied("You do not have permission to edit HR requests.")
 
-        if edit_scope == 'own' and old_instance.user != user:
-            raise PermissionDenied("You can only edit your own requests.")
+            if edit_scope == 'own' and old_instance.user != user:
+                raise PermissionDenied("You can only edit your own requests.")
 
-        if edit_scope == 'team' and old_instance.user != user:
-            team_users = get_team_users(user)
-            if old_instance.user and not team_users.filter(id=old_instance.user.id).exists():
-                raise PermissionDenied("You can only edit requests of your team members.")
+            if edit_scope == 'team' and old_instance.user != user:
+                team_users = get_team_users(user)
+                if old_instance.user and not team_users.filter(id=old_instance.user.id).exists():
+                    raise PermissionDenied("You can only edit requests of your team members.")
 
         new_status = serializer.validated_data.get('status', old_instance.status)
         if old_instance.status != new_status:
@@ -92,6 +131,17 @@ class HRRequestViewSet(viewsets.ModelViewSet):
                 note=f'Status changed to {new_status}'
             )
 
+            if updated_instance.type == 'Leave':
+                from calendar_meeting.models import Meeting
+                meetings = Meeting.objects.filter(platform=f"HRRequest:{updated_instance.id}")
+                
+                if new_status == 'rejected':
+                    meetings.delete()
+                elif new_status == 'approved':
+                    for m in meetings:
+                        m.title = f"[Approved Leave] {updated_instance.title}"
+                        m.save()
+
     def perform_destroy(self, instance):
         user = self.request.user
         perms = get_hr_permissions(user)
@@ -107,6 +157,10 @@ class HRRequestViewSet(viewsets.ModelViewSet):
             team_users = get_team_users(user)
             if instance.user and not team_users.filter(id=instance.user.id).exists():
                 raise PermissionDenied("You can only delete requests of your team members.")
+
+        if instance.type == 'Leave':
+            from calendar_meeting.models import Meeting
+            Meeting.objects.filter(platform=f"HRRequest:{instance.id}").delete()
 
         instance.delete()
 
