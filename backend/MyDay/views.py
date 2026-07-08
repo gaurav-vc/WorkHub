@@ -33,7 +33,7 @@ def dashboard(request):
 
     # ── Current User Profile ─────────────────────────────────────────────────
     try:
-        profile_data = UserProfileSerializer(user.auth_profile).data
+        profile_data = dict(UserProfileSerializer(user.auth_profile).data)
     except Exception:
         profile_data = {
             "name": user.get_full_name() or user.username,
@@ -81,12 +81,12 @@ def dashboard(request):
 
     # ── HR Requests: only show to managers / admins / superusers ────────────
     auth_profile = getattr(user, 'auth_profile', None)
-    user_role = getattr(auth_profile, 'role', None)
+    user_role_rel = getattr(auth_profile, 'role_relationship', None)
     is_admin_or_manager = (
         user.is_superuser
         or user.is_staff
-        or (user_role and user_role.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
-        if auth_profile and getattr(auth_profile, 'role_relationship', None)
+        or (user_role_rel and user_role_rel.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
+        if auth_profile and user_role_rel
         else user.is_superuser or user.is_staff
     )
 
