@@ -4,6 +4,7 @@ from django.contrib.auth.models import User
 from Project.models import Task
 from workspace.models import Notification
 from django.core.mail import send_mail
+from django.conf import settings
 
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
@@ -152,7 +153,7 @@ class MOMSerializer(serializers.ModelSerializer):
                                 <p style="margin: 0 0 8px 0; font-size: 14px;"><span style="color: #64748b; margin-right: 8px;">Due Date:</span> <strong style="color: #0f172a;">{due_date_str}</strong></p>
                                 <p style="margin: 0; font-size: 14px;"><span style="color: #64748b; margin-right: 8px;">MOM Reference:</span> <strong style="color: #0f172a;">{point.mom.title}</strong></p>
                             </div>
-                            <a href="http://127.0.0.1:5173/tasks/projects" style="display: inline-block; background-color: #0265dc; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 14px;">Open Task in Portal</a>
+                            <a href="{getattr(settings, 'FRONTEND_URL', 'http://127.0.0.1:5173' if settings.DEBUG else 'https://workhub.vibesandbox.live')}/tasks/projects" style="display: inline-block; background-color: #0265dc; color: #ffffff; text-decoration: none; padding: 10px 20px; border-radius: 6px; font-weight: 600; font-size: 14px;">Open Task in Portal</a>
                         </div>
                         <div style="background-color: #f8fafc; padding: 16px 24px; border-top: 1px solid #e2e8f0; color: #64748b; font-size: 13px;">
                             &mdash; {tenant_name} Facility Management Platform

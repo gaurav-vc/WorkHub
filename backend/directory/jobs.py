@@ -28,7 +28,7 @@ def send_birthday_emails():
             if employee.photo:
                 # This is a naive way to generate absolute URI if we don't have the request
                 # In production, we'd use a site framework or an env variable for domain.
-                domain = getattr(settings, 'BACKEND_DOMAIN', 'http://localhost:8000')
+                domain = getattr(settings, 'BACKEND_DOMAIN', 'http://localhost:8000' if settings.DEBUG else 'https://workhub.vibesandbox.live')
                 photo_url = f"{domain}{employee.photo.url}"
 
             html_message = f"""
