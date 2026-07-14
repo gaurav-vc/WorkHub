@@ -1,7 +1,7 @@
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.parsers import MultiPartParser, FormParser
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from django.core.mail import send_mail
 from django.template.loader import render_to_string
 from django.utils import timezone
@@ -12,6 +12,7 @@ from django.conf import settings
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all().order_by('name')
     serializer_class = EmployeeSerializer
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def get_serializer_context(self):
         context = super().get_serializer_context()
@@ -21,6 +22,17 @@ class EmployeeViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         from core.tenant import get_current_organization
         org = get_current_organization()
+        if not org:
+            try:
+                from organization.models import Organization, UserProfile as OrgUserProfile
+                org = Organization.objects.first()
+                if org and self.request.user.is_authenticated:
+                    op, _ = OrgUserProfile.objects.get_or_create(user=self.request.user)
+                    if not op.organization:
+                        op.organization = org
+                        op.save()
+            except Exception:
+                pass
         serializer.save(organization=org)
 
     @action(detail=True, methods=['post'], parser_classes=[MultiPartParser, FormParser])

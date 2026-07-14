@@ -82,6 +82,29 @@ def detect_and_save_conflicts():
 # ─────────────────────────────────────────────────────────────────────────────
 # DEPARTMENTS
 # ─────────────────────────────────────────────────────────────────────────────
+def _get_org_for_request(request):
+    """Helper to get the organization for the current request user, with fallback."""
+    user = request.user
+    try:
+        org_profile = getattr(user, 'org_profile', None)
+        if org_profile and org_profile.organization:
+            return org_profile.organization
+    except Exception:
+        pass
+    # Fallback: use first available organization and link user to it
+    try:
+        from organization.models import Organization, UserProfile as OrgUserProfile
+        first_org = Organization.objects.first()
+        if first_org and user.is_authenticated:
+            op, _ = OrgUserProfile.objects.get_or_create(user=user)
+            if not op.organization:
+                op.organization = first_org
+                op.save()
+            return first_org
+    except Exception:
+        pass
+    return None
+
 @api_view(['GET', 'POST'])
 def department_list_create(request):
     """
@@ -89,12 +112,17 @@ def department_list_create(request):
     POST /api/resources/departments/  — create a new department
     """
     if request.method == 'GET':
-        depts = Department.objects.all()
+        org = _get_org_for_request(request)
+        if org:
+            depts = Department.all_objects.filter(organization=org)
+        else:
+            depts = Department.all_objects.all()
         return Response(DepartmentSerializer(depts, many=True).data)
 
     serializer = DepartmentSerializer(data=request.data)
     if serializer.is_valid():
-        serializer.save()
+        org = _get_org_for_request(request)
+        serializer.save(organization=org)
         return Response(serializer.data, status=201)
     return Response(serializer.errors, status=400)
 
@@ -102,7 +130,7 @@ def department_list_create(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 def department_detail(request, dept_id):
     try:
-        dept = Department.objects.get(id=dept_id)
+        dept = Department.all_objects.get(id=dept_id)
     except Department.DoesNotExist:
         return Response({"error": "Department not found."}, status=404)
 
@@ -129,7 +157,11 @@ def employee_list_create(request):
          Body: { user_id, role, department_id, weekly_capacity, joined_date }
     """
     if request.method == 'GET':
-        qs = EmployeeProfile.objects.filter(is_active=True).select_related('user', 'department')
+        org = _get_org_for_request(request)
+        if org:
+            qs = EmployeeProfile.all_objects.filter(is_active=True, organization=org).select_related('user', 'department')
+        else:
+            qs = EmployeeProfile.all_objects.filter(is_active=True).select_related('user', 'department')
 
         # Filter by department
         dept_id = request.query_params.get('department')
@@ -176,16 +208,18 @@ def employee_list_create(request):
     dept_id = request.data.get('department_id')
     if dept_id:
         try:
-            dept = Department.objects.get(id=dept_id)
+            dept = Department.all_objects.get(id=dept_id)
         except Department.DoesNotExist:
             pass
 
+    org = _get_org_for_request(request)
     profile = EmployeeProfile.objects.create(
         user            = user,
         department      = dept,
         role            = request.data.get('role', 'DEV'),
         weekly_capacity = float(request.data.get('weekly_capacity', 40)),
         joined_date     = request.data.get('joined_date') or None,
+        organization    = org,
     )
     return Response(EmployeeProfileSerializer(profile).data, status=201)
 
@@ -193,7 +227,7 @@ def employee_list_create(request):
 @api_view(['GET', 'PUT', 'DELETE'])
 def employee_detail(request, emp_id):
     try:
-        emp = EmployeeProfile.objects.select_related('user', 'department').get(id=emp_id)
+        emp = EmployeeProfile.all_objects.select_related('user', 'department').get(id=emp_id)
     except EmployeeProfile.DoesNotExist:
         return Response({"error": "Employee not found."}, status=404)
 

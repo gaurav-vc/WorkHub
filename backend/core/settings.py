@@ -200,14 +200,14 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_HOST_USER = os.environ.get('EMAIL_HOST_USER', 'gauravkokane420op@gmail.com')
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', '')
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD', 'ibav levs ocio uzkk')
 DEFAULT_FROM_EMAIL = f'WorkHub <{EMAIL_HOST_USER}>'
 
 # Frontend URL (used in emails)
-FRONTEND_URL = 'http://localhost:5173'
+FRONTEND_URL = 'https://workhub.vibesandbox.live/'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 # AI Settings — set GEMINI_API_KEY in your environment or .env file
-GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')

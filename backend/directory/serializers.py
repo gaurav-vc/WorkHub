@@ -2,8 +2,8 @@ from rest_framework import serializers
 from .models import Employee
 
 class EmployeeSerializer(serializers.ModelSerializer):
-    # Map Django's 'joined_date' to React's 'joinedDate'
-    joinedDate = serializers.CharField(source='joined_date')
+    # Read: expose as joinedDate for React
+    joinedDate = serializers.CharField(source='joined_date', required=False, allow_blank=True)
     photo = serializers.SerializerMethodField()
 
     class Meta:
@@ -21,3 +21,10 @@ class EmployeeSerializer(serializers.ModelSerializer):
                 return request.build_absolute_uri(obj.photo.url)
             return obj.photo.url
         return None
+
+    def to_internal_value(self, data):
+        # Accept both joinedDate (frontend) and joined_date (backend)
+        mutable = data.copy() if hasattr(data, 'copy') else dict(data)
+        if 'joinedDate' in mutable and 'joined_date' not in mutable:
+            mutable['joined_date'] = mutable.pop('joinedDate')
+        return super().to_internal_value(mutable)

@@ -6,7 +6,10 @@ User = get_user_model()
 
 class ArticleCategory(TenantModel):
     name = models.CharField(max_length=100)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField()
+
+    class Meta:
+        unique_together = ('slug', 'organization')
 
     def __str__(self):
         return self.name

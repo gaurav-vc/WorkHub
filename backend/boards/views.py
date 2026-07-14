@@ -149,6 +149,17 @@ class CardViewSet(viewsets.ModelViewSet):
         return Response({"error": "title required"}, status=400)
 
     @action(detail=True, methods=['post'])
+    def toggle_checklist(self, request, pk=None):
+        checklist_id = request.data.get('checklist_id')
+        try:
+            ck = CardChecklist.objects.get(id=checklist_id)
+            ck.is_completed = not ck.is_completed
+            ck.save()
+            return Response({"status": "toggled", "is_completed": ck.is_completed})
+        except CardChecklist.DoesNotExist:
+            return Response({"error": "checklist not found"}, status=404)
+
+    @action(detail=True, methods=['post'])
     def add_comment(self, request, pk=None):
         card = self.get_object()
         text = request.data.get('text')

@@ -4,8 +4,8 @@ from django.core.validators import MinValueValidator
 from core.tenant import TenantModel
 
 class TemplateCategory(TenantModel):
-    title = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(max_length=120, unique=True)
+    title = models.CharField(max_length=100)
+    slug = models.SlugField(max_length=120)
     icon = models.CharField(max_length=50, blank=True, help_text="Lucide icon name (e.g., 'Users', 'Briefcase')")
     color = models.CharField(max_length=20, blank=True, help_text="Hex color or CSS class")
     description = models.TextField(blank=True)
@@ -16,6 +16,7 @@ class TemplateCategory(TenantModel):
     class Meta:
         verbose_name_plural = "Template Categories"
         ordering = ['ordering', 'title']
+        unique_together = [('slug', 'organization'), ('title', 'organization')]
 
     def __str__(self):
         return self.title
@@ -23,7 +24,7 @@ class TemplateCategory(TenantModel):
 
 class Template(TenantModel):
     title = models.CharField(max_length=200)
-    slug = models.SlugField(max_length=250, unique=True)
+    slug = models.SlugField(max_length=250)
     description = models.TextField()
     category = models.ForeignKey(TemplateCategory, on_delete=models.SET_NULL, null=True, related_name='templates')
     thumbnail = models.ImageField(upload_to='templates/thumbnails/', blank=True, null=True)
@@ -49,6 +50,7 @@ class Template(TenantModel):
 
     class Meta:
         ordering = ['-is_featured', '-usage_count', '-created_at']
+        unique_together = [('slug', 'organization')]
 
     def __str__(self):
         return self.title

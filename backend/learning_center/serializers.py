@@ -101,8 +101,18 @@ class CourseSerializer(serializers.ModelSerializer):
 
         request = self.context.get('request')
         org = None
-        if request and hasattr(request.user, 'auth_profile') and request.user.auth_profile.organization:
-            org = request.user.auth_profile.organization
+        if request:
+            # Try org_profile first (correct location)
+            org_profile = getattr(request.user, 'org_profile', None)
+            if org_profile and org_profile.organization:
+                org = org_profile.organization
+            # Fallback: use first available organization
+            if not org:
+                try:
+                    from organization.models import Organization
+                    org = Organization.objects.first()
+                except Exception:
+                    pass
             
         course = Course.objects.create(organization=org, **validated_data)
 

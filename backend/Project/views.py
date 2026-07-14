@@ -68,7 +68,7 @@ def project_list_create(request):
             import traceback
             return Response({"error": str(e), "traceback": traceback.format_exc()}, status=500)
 
-@api_view(['GET', 'PUT', 'DELETE'])
+@api_view(['GET', 'PUT', 'PATCH', 'DELETE'])
 def project_detail(request, project_id):
     from django.db.models import Q
     visible_users = get_visible_users(request.user)
@@ -106,7 +106,7 @@ def project_detail(request, project_id):
         serializer = ProjectSerializer(project)
         return Response(serializer.data)
 
-    elif request.method == 'PUT':
+    elif request.method in ['PUT', 'PATCH']:
         serializer = ProjectSerializer(project, data=request.data, partial=True)
         if serializer.is_valid():
             serializer.save()

@@ -37,15 +37,28 @@ class TenantManager(models.Manager):
         org = get_current_organization()
         site = get_current_site()
         
-        # Super admin sees NO tenant data
+        # Super admin sees ALL tenant data
         if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
-            return super().get_queryset().none()
+            return super().get_queryset()
             
         if not org:
             # Bypass if no user context is found to allow background tasks.
             if user is None:
                 return super().get_queryset()
-            return super().get_queryset().none()
+            # Fallback: try to use first organization
+            try:
+                from organization.models import Organization, UserProfile as OrgUserProfile
+                first_org = Organization.objects.first()
+                if first_org and user.is_authenticated:
+                    org_profile, _ = OrgUserProfile.objects.get_or_create(user=user)
+                    if not org_profile.organization:
+                        org_profile.organization = first_org
+                        org_profile.save()
+                    org = first_org
+            except Exception:
+                pass
+            if not org:
+                return super().get_queryset().none()
             
         qs = super().get_queryset().filter(organization=org)
         

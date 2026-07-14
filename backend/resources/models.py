@@ -14,12 +14,14 @@ class Department(TenantModel):
     A group/team within the company (e.g. Engineering, Design, QA).
     Employees belong to one department.
     """
-    name        = models.CharField(max_length=100, unique=True)
+    name        = models.CharField(max_length=100)
     description = models.TextField(blank=True, default="")
     created_at  = models.DateTimeField(auto_now_add=True)
 
     class Meta:
         ordering = ['name']
+        # Unique per organization, not globally
+        unique_together = [('name', 'organization')]
 
     def __str__(self):
         return self.name
