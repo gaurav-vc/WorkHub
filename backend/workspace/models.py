@@ -8,6 +8,7 @@ class Notification(TenantModel):
     message = models.TextField()
     time = models.DateTimeField(auto_now_add=True)
     link = models.CharField(max_length=255, blank=True)
+    is_read = models.BooleanField(default=False)
 
     class Meta:
         db_table = 'workspace_notification'
