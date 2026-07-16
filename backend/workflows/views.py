@@ -104,13 +104,45 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                                     message=f"Hello {user.get_full_name() or user.username},\n\nYou have been assigned a task from workflow '{workflow.name}'.\n\n- System Bot",
                                     from_email='system@company.local',
                                     recipient_list=[user.email],
-                                    fail_silently=True,
+                                    fail_silently=False,
                                 )
                                 log_msg += " Real email dispatched."
-                            except Exception:
-                                pass
+                            except Exception as e:
+                                log_msg += f" Email failed: {str(e)}"
                     except User.DoesNotExist:
                         log_msg = f"Assignee ID '{assignee_id}' not found. Cannot assign user."
+                        
+            elif label == "Assign Manager":
+                manager_id = config.get('managerId')
+                if manager_id:
+                    try:
+                        manager = User.objects.get(id=manager_id)
+                        if context_task:
+                            context_task.assigned_to = manager
+                            context_task.save()
+                        log_msg = f"Successfully assigned workflow task to manager {manager.get_full_name() or manager.username}."
+                        if Notification:
+                            Notification.objects.create(
+                                type="workflow_assignment",
+                                title="Manager Assignment",
+                                message=f"You have been assigned as a manager for a step in workflow: '{workflow.name}'",
+                                link="/workflow-automation"
+                            )
+                        if manager.email:
+                            from django.core.mail import send_mail
+                            try:
+                                send_mail(
+                                    subject=f"Manager Assignment: {workflow.name}",
+                                    message=f"Hello {manager.get_full_name() or manager.username},\n\nYou have been assigned a task as a Manager from workflow '{workflow.name}'.\n\n- System Bot",
+                                    from_email='system@company.local',
+                                    recipient_list=[manager.email],
+                                    fail_silently=False,
+                                )
+                                log_msg += " Real email dispatched."
+                            except Exception as e:
+                                log_msg += f" Email failed: {str(e)}"
+                    except User.DoesNotExist:
+                        log_msg = f"Manager ID '{manager_id}' not found. Cannot assign manager."
                         
             elif label == "Role Condition":
                 required_role = config.get('role', 'Manager').lower()
@@ -168,15 +200,35 @@ class WorkflowViewSet(viewsets.ModelViewSet):
                     except User.DoesNotExist:
                         log_msg = f"Approver ID '{approver_id}' not found. Cannot request approval."
                         
-            elif label in ["Send Notification", "Send Email"]:
+            elif label == "Send Email":
+                email_address = config.get('email')
+                if email_address:
+                    from django.core.mail import send_mail
+                    try:
+                        send_mail(
+                            subject=f"Workflow Notification: {workflow.name}",
+                            message=f"Hello,\n\nThis is an automated email from the workflow '{workflow.name}'.\n\n- System Bot",
+                            from_email='system@company.local',
+                            recipient_list=[email_address],
+                            fail_silently=False,
+                        )
+                        log_msg = f"Successfully dispatched real email to {email_address}."
+                    except Exception as e:
+                        log_msg = f"Failed to send email to {email_address}. Error: {str(e)}"
+                else:
+                    log_msg = f"No recipient email configured for Send Email node."
+                    
+            elif label == "Send Notification":
+                title = config.get('title', f"Workflow Alert: {workflow.name}")
+                message = config.get('message', 'A workflow automation step was triggered.')
                 if Notification:
                     Notification.objects.create(
                         type="workflow_alert",
-                        title=f"Workflow Alert: {workflow.name}",
-                        message=config.get('details', 'A workflow automation step was triggered.'),
+                        title=title,
+                        message=message,
                         link="/workflow-automation"
                     )
-                    log_msg = f"Broadcast notification dispatched successfully."
+                    log_msg = f"Broadcast notification dispatched successfully: '{title}'."
 
             node_traces[curr] = {
                 "status": "Success",

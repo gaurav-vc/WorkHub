@@ -21,7 +21,7 @@ SECRET_KEY = 'django-insecure-c&7j*58ngon#s44&#y^5jj60z=v--#(!-*kn+hw*jl5ic2)3ea
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['workhub.vibesandbox.live', '103.192.198.102', 'localhost', '127.0.0.1']
 
 
 # Application definition

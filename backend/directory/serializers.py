@@ -11,7 +11,7 @@ class EmployeeSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'name', 'initials', 'role', 'department',
             'email', 'phone', 'location', 'status',
-            'joinedDate', 'manager', 'skills', 'photo', 'website'
+            'joinedDate', 'date_of_birth', 'manager', 'skills', 'photo', 'website'
         ]
 
     def get_photo(self, obj):

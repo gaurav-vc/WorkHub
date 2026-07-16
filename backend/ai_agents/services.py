@@ -72,22 +72,62 @@ class AIGatewayService:
     def handle_database_first(self, message, live_data):
         """Database-first heuristic processing to skip LLM for basic queries."""
         lower_msg = message.lower()
-        if any(w in lower_msg for w in ["my tasks", "pending tasks", "what are my tasks", "show tasks"]):
-            if "error" in live_data or "detail" in live_data:
-                return f"Debug Error fetching context: {str(live_data)}"
+        
+        # Error check
+        if "error" in live_data or "detail" in live_data:
+            return f"Debug Error fetching context: {str(live_data)}"
+
+        # 1. Tasks
+        if any(w in lower_msg for w in ["my tasks", "pending tasks", "what are my tasks", "show tasks", "todo"]):
             tasks = live_data.get('tasks', [])
             if not tasks: return "You currently have no tasks assigned."
             return "Here are your tasks:\n" + "\n".join([f"- [{t.get('priority')}] {t.get('title')} ({t.get('status')})" for t in tasks])
             
-        if any(w in lower_msg for w in ["my meetings", "schedule", "calendar"]):
+        # 2. Meetings / Calendar
+        if any(w in lower_msg for w in ["my meetings", "schedule", "calendar", "upcoming meeting"]):
             meetings = live_data.get('meetings', [])
             if not meetings: return "You have no upcoming meetings scheduled."
             return "Here are your upcoming meetings:\n" + "\n".join([f"- {m.get('title')} at {m.get('time')}" for m in meetings])
             
-        if any(w in lower_msg for w in ["leave balance", "my leave"]):
+        # 3. HR & Leave
+        if any(w in lower_msg for w in ["leave balance", "my leave", "vacation days"]):
             balance = live_data.get('hr', {}).get('leaveBalance', 0)
             return f"Your current leave balance is {balance} days."
             
+        # 4. Pending Approvals
+        if any(w in lower_msg for w in ["approvals", "pending approvals", "requests"]):
+            approvals = live_data.get('hr', {}).get('pendingApprovals', [])
+            if not approvals: return "You have no pending approvals."
+            return "Here are your pending requests:\n" + "\n".join([f"- {a.get('title')} ({a.get('status')})" for a in approvals])
+            
+        # 5. Directory / Employees
+        if any(w in lower_msg for w in ["colleagues", "employees", "who works here", "team members", "who is"]):
+            employees = live_data.get('hr', {}).get('employees', [])
+            if not employees: return "No employee data found."
+            
+            # Simple keyword search for a specific name
+            search_query = lower_msg.replace("who is ", "").replace("find ", "").strip()
+            if search_query and search_query not in ["colleagues", "employees", "who works here", "team members"]:
+                matches = [e for e in employees if search_query in e.get('name', '').lower()]
+                if matches:
+                    return f"Found matching employees:\n" + "\n".join([f"- {e.get('name')} ({e.get('role')})" for e in matches])
+            
+            # Default to list all
+            return "Here is the team directory:\n" + "\n".join([f"- {e.get('name')} ({e.get('role')})" for e in employees[:10]])
+            
+        # 6. Leads / Boards
+        if any(w in lower_msg for w in ["my leads", "sales", "pipeline"]):
+            leads = live_data.get('leads', [])
+            if not leads: return "You have no active leads in your pipeline."
+            return "Here is your active pipeline:\n" + "\n".join([f"- {l.get('title')} (Stage: {l.get('column')})" for l in leads])
+            
+        # 7. Knowledge Base
+        if any(w in lower_msg for w in ["articles", "knowledge base", "documents", "docs"]):
+            articles = live_data.get('knowledge', [])
+            if not articles: return "No knowledge base articles found."
+            return "Here are some top articles from the Knowledge Base:\n" + "\n".join([f"- **{a.get('title')}**: {a.get('excerpt')}" for a in articles])
+            
+        # Fallback to Gemini if no local matching logic handles this
         return None # Proceed to Gemini
 
     def generate_response(self, request, conversation, user_message, agent_type, action_type='chat', document_content=''):
