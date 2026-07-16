@@ -352,6 +352,12 @@ class TaskViewSet(TenantModelViewSet):
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
+        
+        # Site admins and super users should see all tasks in the org for resource planning
+        profile = getattr(user, 'auth_profile', None)
+        if profile and profile.user_type in ['super_user', 'site_admin']:
+            return queryset.order_by('-created_at')
+            
         from django.db.models import Q
         return queryset.filter(Q(assigned_to=user) | Q(created_by=user)).distinct().order_by('-created_at')
 
