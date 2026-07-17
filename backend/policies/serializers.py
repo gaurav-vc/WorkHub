@@ -15,4 +15,4 @@ class PolicySerializer(serializers.ModelSerializer):
         return obj.updated_at.strftime("%b %Y")
 
     def get_created_at_formatted(self, obj):
-        return obj.created_at.strftime("%b %d, %Y %I:%M %p")
+        return obj.updated_at.strftime("%b %d, %Y %I:%M %p")
