@@ -58,9 +58,14 @@ class TenantManager(models.Manager):
             except Exception:
                 pass
             if not org:
-                return super().get_queryset().none()
-            
-        qs = super().get_queryset().filter(organization=org)
+                # Graceful fallback for fresh deployments: if no organizations exist yet, bypass filtering
+                from organization.models import Organization
+                if not Organization.objects.exists():
+                    qs = super().get_queryset()
+                else:
+                    return super().get_queryset().none()
+            else:
+                qs = super().get_queryset().filter(organization=org)
         
         # Site Isolation Logic
         if user:
