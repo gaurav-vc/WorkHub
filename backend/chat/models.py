@@ -14,7 +14,7 @@ class Channel(models.Model):
 class Message(models.Model):
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='messages')
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='messages')
-    content = models.TextField()
+    content = models.TextField(blank=True, default="")
     timestamp = models.DateTimeField(auto_now_add=True)
     
     file = models.FileField(upload_to='chat_attachments/', null=True, blank=True)
