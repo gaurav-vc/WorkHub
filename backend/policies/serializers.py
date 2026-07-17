@@ -11,8 +11,9 @@ class PolicySerializer(serializers.ModelSerializer):
         fields = ['id', 'title', 'category', 'version', 'content', 'lastUpdated', 'attachment', 'created_at_formatted']
 
     def get_lastUpdated(self, obj):
-        # Formats like "Jan 2026" to match your UI perfectly
-        return obj.updated_at.strftime("%b %Y")
+        return obj.updated_at.strftime("%b %d, %Y %I:%M %p")
 
     def get_created_at_formatted(self, obj):
-        return obj.updated_at.strftime("%b %d, %Y %I:%M %p")
+        # Fallback to updated_at if created_at doesn't exist for some reason
+        dt = getattr(obj, 'created_at', obj.updated_at)
+        return dt.strftime("%b %d, %Y %I:%M %p")
