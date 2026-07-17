@@ -16,16 +16,25 @@ class ChannelViewSet(viewsets.ModelViewSet):
     @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):
         channel = self.get_object()
+        user_ids = request.data.get('user_ids')
         user_id = request.data.get('user_id')
-        if not user_id:
-            return Response({"error": "user_id is required"}, status=status.HTTP_400_BAD_REQUEST)
         
-        try:
-            user = User.objects.get(id=user_id)
-            channel.members.add(user)
-            return Response({"message": f"{user.username} added to channel."})
-        except User.DoesNotExist:
-            return Response({"error": "User not found."}, status=status.HTTP_404_NOT_FOUND)
+        if not user_ids and user_id:
+            user_ids = [user_id]
+            
+        if not user_ids:
+            return Response({"error": "user_id or user_ids is required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        users_added = []
+        for uid in user_ids:
+            try:
+                user = User.objects.get(id=uid)
+                channel.members.add(user)
+                users_added.append(user.username)
+            except User.DoesNotExist:
+                continue
+                
+        return Response({"message": f"{len(users_added)} members added to channel."})
 
     @action(detail=False, methods=['get'])
     def all_users(self, request):

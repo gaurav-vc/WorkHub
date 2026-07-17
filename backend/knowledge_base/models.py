@@ -24,6 +24,8 @@ class Article(TenantModel):
     author = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     read_time = models.CharField(max_length=50, blank=True)
     views = models.PositiveIntegerField(default=0)
+    helpful_users = models.ManyToManyField(User, related_name='helpful_articles', blank=True)
+    saved_by = models.ManyToManyField(User, related_name='saved_articles', blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

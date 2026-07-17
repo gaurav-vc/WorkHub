@@ -22,6 +22,12 @@ def get_hr_permissions(user):
                 perms[k] = 'all' if val else 'none'
             elif isinstance(val, str):
                 perms[k] = val
+                
+    # Provide sensible defaults if mapping is missing or returns none
+    if perms['create'] == 'none':
+        perms['create'] = 'own'
+    if perms['view'] == 'none':
+        perms['view'] = 'own'
 
     return perms
 

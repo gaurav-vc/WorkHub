@@ -17,6 +17,9 @@ class Message(models.Model):
     content = models.TextField()
     timestamp = models.DateTimeField(auto_now_add=True)
     
+    file = models.FileField(upload_to='chat_attachments/', null=True, blank=True)
+    file_name = models.CharField(max_length=255, blank=True)
+
     # We can store simple reactions as JSON, or break them into a separate table later
     reactions = models.JSONField(default=list, blank=True) 
 

@@ -99,6 +99,7 @@ class Task(TenantModel):
     
     start_day = models.IntegerField(default=0)
     duration = models.IntegerField(default=3)
+    actual_effort = models.IntegerField(default=0)
     color = models.CharField(max_length=50, default='bg-primary')
     dependency = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='dependent_tasks_legacy')
 

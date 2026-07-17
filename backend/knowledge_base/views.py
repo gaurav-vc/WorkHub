@@ -1,4 +1,6 @@
-from rest_framework import viewsets, filters
+from rest_framework import viewsets, filters, status
+from rest_framework.decorators import action
+from rest_framework.response import Response
 from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 from .models import Article, ArticleCategory
 from .serializers import ArticleSerializer
@@ -38,3 +40,33 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 category=category_obj, 
                 read_time=estimated_time
             )
+
+    @action(detail=True, methods=['post'])
+    def toggle_helpful(self, request, pk=None):
+        article = self.get_object()
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if request.user in article.helpful_users.all():
+            article.helpful_users.remove(request.user)
+            helpful = False
+        else:
+            article.helpful_users.add(request.user)
+            helpful = True
+            
+        return Response({"helpful": helpful, "count": article.helpful_users.count()})
+
+    @action(detail=True, methods=['post'])
+    def toggle_save(self, request, pk=None):
+        article = self.get_object()
+        if not request.user.is_authenticated:
+            return Response({"error": "Authentication required"}, status=status.HTTP_401_UNAUTHORIZED)
+        
+        if request.user in article.saved_by.all():
+            article.saved_by.remove(request.user)
+            saved = False
+        else:
+            article.saved_by.add(request.user)
+            saved = True
+            
+        return Response({"saved": saved})

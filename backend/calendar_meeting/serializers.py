@@ -9,11 +9,10 @@ class MeetingSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Meeting
-        fields = ['id', 'title', 'time', 'duration', 'attendees', 'type']
+        fields = ['id', 'title', 'time', 'duration', 'attendees', 'type', 'meeting_link']
 
     def get_time(self, obj):
-        local_time = timezone.localtime(obj.meeting_time)
-        return local_time.strftime('%I:%M %p')
+        return obj.meeting_time.isoformat()
 
     def get_attendees(self, obj):
         return obj.attendees.count()

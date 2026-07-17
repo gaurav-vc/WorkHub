@@ -257,10 +257,15 @@ def upload_task_attachment(request, task_id):
     if not file_obj:
         return Response({"error": "No file uploaded"}, status=400)
         
+    org = task.organization if hasattr(task, 'organization') else None
+    if not org and hasattr(request.user, 'org_profile') and request.user.org_profile.organization:
+        org = request.user.org_profile.organization
+
     attachment = TaskAttachment.objects.create(
         task=task,
         file=file_obj,
-        uploaded_by=request.user if request.user.is_authenticated else None
+        uploaded_by=request.user if request.user.is_authenticated else None,
+        organization=org
     )
     
     return Response({"message": "File uploaded successfully", "id": attachment.id, "file_name": attachment.file.name}, status=201)
@@ -448,6 +453,16 @@ class TaskViewSet(TenantModelViewSet):
                 task=task,
                 title=cl.get('title', 'Untitled Item'),
                 is_completed=cl.get('is_completed', False),
+                organization=org
+            )
+
+        # Handle file attachment
+        if 'file' in request.FILES:
+            from .models import TaskAttachment
+            TaskAttachment.objects.create(
+                task=task,
+                file=request.FILES['file'],
+                uploaded_by=request.user,
                 organization=org
             )
 

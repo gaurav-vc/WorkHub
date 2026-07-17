@@ -191,4 +191,32 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
 class LeaderboardViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
     serializer_class = LeaderboardEntrySerializer
-    queryset = LeaderboardEntry.objects.all().order_by('-points')
+
+    def get_queryset(self):
+        from authentication.models import User
+        from Project.models import Task
+        
+        # Calculate real-time dynamic points based on ACTUAL completed tasks
+        users = User.objects.all()
+        for user in users:
+            # Get tasks assigned to the user that are completed (10 points each)
+            completed_assigned = Task.objects.filter(assigned_to=user, status='done').count()
+            # Get tasks created by the user that are completed (5 points each)
+            completed_created = Task.objects.filter(created_by=user, status='done').count()
+            
+            real_points = (completed_assigned * 10) + (completed_created * 5)
+            # Level up every 50 points, start at level 1
+            real_level = (real_points // 50) + 1
+            
+            entry, created = LeaderboardEntry.objects.get_or_create(
+                user=user,
+                defaults={'points': real_points, 'level': real_level}
+            )
+            
+            # If the points changed, update it so it's perfectly dynamic
+            if not created and (entry.points != real_points or entry.level != real_level):
+                entry.points = real_points
+                entry.level = real_level
+                entry.save(update_fields=['points', 'level'])
+            
+        return LeaderboardEntry.objects.all().order_by('-points')

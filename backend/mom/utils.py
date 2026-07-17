@@ -116,12 +116,24 @@ def generate_mom_pdf(mom):
             name = att.name or ''
             email = att.email or ''
             type_str = 'Client'
+            designation = 'Client'
         else:
             name = att.user.get_full_name() or att.user.username if att.user else ''
             email = att.user.email if att.user else ''
             type_str = 'Internal'
+            designation = 'Staff'
+            if att.user:
+                try:
+                    # Try to fetch from EmployeeProfile (department name)
+                    if hasattr(att.user, 'employee_profile') and att.user.employee_profile.department:
+                        designation = att.user.employee_profile.department.name
+                    # Fallback to UserProfile role
+                    elif hasattr(att.user, 'auth_profile'):
+                        designation = att.user.auth_profile.get_role_display()
+                except Exception:
+                    pass
         
-        attendee_data.append([str(idx), name, '-', email, type_str])
+        attendee_data.append([str(idx), name, designation, email, type_str])
     
     if len(attendee_data) == 1:
         attendee_data.append(['', 'No attendees found', '', '', ''])

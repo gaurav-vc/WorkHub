@@ -12,8 +12,9 @@ class MOM(TenantModel):
     meeting_status_choices = [
        ('scheduled', 'Scheduled'),
        ('in progress', 'In Progress'),
-       ('completed', 'Completed'),
+       ('Completed', 'Completed'),
        ('cancelled', 'Cancelled'),
+       ('Draft', 'Draft'),
     ]
     meeting_type_choices = [
        ('monthly review' , 'Monthly Review'),

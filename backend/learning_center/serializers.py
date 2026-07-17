@@ -118,16 +118,20 @@ class CourseSerializer(serializers.ModelSerializer):
 
         # Create Topics and Points
         for topic_data in topics_data:
+            topic_data.pop('id', None)
             points_data = topic_data.pop('points', [])
             topic = CourseTopic.objects.create(course=course, **topic_data)
             for point_data in points_data:
+                point_data.pop('id', None)
                 quiz_data = point_data.pop('mini_quiz', [])
                 point = CoursePoint.objects.create(topic=topic, **point_data)
                 for q_data in quiz_data:
+                    q_data.pop('id', None)
                     CoursePointQuestion.objects.create(course_point=point, **q_data)
 
         # Create FAQs
         for faq_data in faqs_data:
+            faq_data.pop('id', None)
             CourseFAQ.objects.create(course=course, **faq_data)
 
         return course
@@ -162,18 +166,22 @@ class CourseSerializer(serializers.ModelSerializer):
         if request and 'topics' in request.data:
             instance.topics.all().delete()
             for topic_data in topics_data:
+                topic_data.pop('id', None)
                 points_data = topic_data.pop('points', [])
                 topic = CourseTopic.objects.create(course=instance, **topic_data)
                 for point_data in points_data:
+                    point_data.pop('id', None)
                     quiz_data = point_data.pop('mini_quiz', [])
                     point = CoursePoint.objects.create(topic=topic, **point_data)
                     for q_data in quiz_data:
+                        q_data.pop('id', None)
                         CoursePointQuestion.objects.create(course_point=point, **q_data)
 
         # Update FAQs by replacing them if provided
         if request and 'faqs' in request.data:
             instance.faqs.all().delete()
             for faq_data in faqs_data:
+                faq_data.pop('id', None)
                 CourseFAQ.objects.create(course=instance, **faq_data)
 
         return instance
