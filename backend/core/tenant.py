@@ -64,8 +64,9 @@ class TenantManager(models.Manager):
                     qs = super().get_queryset()
                 else:
                     return super().get_queryset().none()
-            else:
-                qs = super().get_queryset().filter(organization=org)
+        
+        if 'qs' not in locals():
+            qs = super().get_queryset().filter(organization=org)
         
         # Site Isolation Logic
         if user:
