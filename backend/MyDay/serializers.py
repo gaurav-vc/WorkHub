@@ -27,7 +27,11 @@ class MeetingSerializer(serializers.ModelSerializer):
         model = Meeting
         fields = ['id', 'title', 'time', 'duration', 'attendees', 'meeting_type']
     def get_time(self, obj): return timezone.localtime(obj.meeting_time).strftime('%I:%M %p')
-    def get_attendees(self, obj): return obj.attendees.count()
+    def get_attendees(self, obj):
+        count = obj.attendees.count()
+        if obj.external_attendees:
+            count += len([e for e in obj.external_attendees.split(',') if e.strip()])
+        return count
 
 class TeamActivitySerializer(serializers.ModelSerializer):
     user = serializers.SerializerMethodField()

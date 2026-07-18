@@ -321,8 +321,9 @@ def add_chat(request, task_id):
             text=text, 
             user=request.user if request.user.is_authenticated else None
         )
-        return Response({"status": "chat added"})
-    return Response({"error": "text required"}, status=400)
+        from .serializers import TaskChatSerializer
+        return Response(TaskChatSerializer(chat).data, status=status.HTTP_201_CREATED)
+    return Response({"error": "text required"}, status=status.HTTP_400_BAD_REQUEST)
 
 @api_view(['POST'])
 def add_comment(request, task_id):
@@ -339,7 +340,9 @@ def add_comment(request, task_id):
             text=text, 
             user=request.user if request.user.is_authenticated else None
         )
-    return Response({"error": "text required"}, status=400)
+        from .serializers import TaskCommentSerializer
+        return Response(TaskCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
+    return Response({"error": "text required"}, status=status.HTTP_400_BAD_REQUEST)
 
 
 from core.views import TenantModelViewSet
@@ -380,6 +383,8 @@ class TaskViewSet(TenantModelViewSet):
             data['due_date'] = data.get('dueDate')
         if data.get('dueTime'):
             data['due_time'] = data.get('dueTime')
+        if data.get('dependentTask') and data.get('dependentTask') != "null":
+            data['dependency'] = data.get('dependentTask')
             
         # Provide default due_date as model requires it
         if not data.get('due_date'):
@@ -387,6 +392,9 @@ class TaskViewSet(TenantModelViewSet):
             data['due_date'] = timezone.now().date().isoformat()
             
         # Handle assigned_to
+        if data.get('assignedTo') and data.get('assignedTo') != "null":
+            data['assigned_to'] = data.get('assignedTo')
+            
         assignees = data.get('assigneeIds', [])
         assigned_to_user = request.user
         if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
@@ -395,7 +403,7 @@ class TaskViewSet(TenantModelViewSet):
                 assigned_to_user = User.objects.get(id=assignees[0])
             except:
                 pass
-        elif 'assigned_to' in data and data['assigned_to']:
+        elif 'assigned_to' in data and data['assigned_to'] and data['assigned_to'] != "null":
             try:
                 from django.contrib.auth.models import User
                 assigned_to_user = User.objects.get(id=data['assigned_to'])

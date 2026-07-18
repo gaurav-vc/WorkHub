@@ -121,7 +121,8 @@ class Task(TenantModel):
         newly_assigned_user = None
 
         if not is_new:
-            old_task = Task.objects.get(pk=self.pk)
+            # Use all_objects to bypass tenant filtering in case the task is site-less
+            old_task = Task.all_objects.get(pk=self.pk)
             if old_task.status not in ['done', 'completed'] and self.status in ['done', 'completed']:
                 status_changed_to_done = True
             if old_task.status != 'delayed' and self.status == 'delayed':

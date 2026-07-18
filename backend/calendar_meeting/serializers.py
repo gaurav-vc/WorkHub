@@ -15,7 +15,10 @@ class MeetingSerializer(serializers.ModelSerializer):
         return obj.meeting_time.isoformat()
 
     def get_attendees(self, obj):
-        return obj.attendees.count()
+        count = obj.attendees.count()
+        if obj.external_attendees:
+            count += len([e for e in obj.external_attendees.split(',') if e.strip()])
+        return count
 
     def get_type(self, obj):
         return obj.meeting_type

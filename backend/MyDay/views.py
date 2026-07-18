@@ -70,7 +70,7 @@ def dashboard(request):
     meetings_qs = Meeting.objects.filter(
         Q(attendees=user) | Q(organizer=user),
         meeting_time__date__gte=today
-    ).distinct().order_by('meeting_time')[:5]
+    ).exclude(meeting_type='task').distinct().order_by('meeting_time')[:5]
 
     # ── Team Activity: scoped to visible users in the same org ───────────────
     # This is intentionally shared (like a social feed) — shows what teammates did.
