@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from core.tenant import TenantModel
 
 class Policy(TenantModel):
@@ -7,6 +8,7 @@ class Policy(TenantModel):
     version = models.CharField(max_length=20, default="1.0")
     content = models.TextField()
     attachment = models.FileField(upload_to='policies/', null=True, blank=True)
+    created_at = models.DateTimeField(default=timezone.now)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

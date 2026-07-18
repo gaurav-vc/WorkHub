@@ -20,6 +20,7 @@ class Document(models.Model):
     content = models.TextField(blank=True, help_text="Used for rich text notes if no file is uploaded")
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, null=True, blank=True, related_name='documents')
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_documents')
+    is_common = models.BooleanField(default=False, help_text="If true, visible to everyone in the organization")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

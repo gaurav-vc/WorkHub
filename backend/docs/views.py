@@ -35,8 +35,8 @@ class DocumentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        # Return docs owned by user, or in common folders
-        return Document.objects.filter(Q(owner=user) | Q(folder__is_common=True)).order_by('-updated_at')
+        # Return docs owned by user, or in common folders, or marked as common
+        return Document.objects.filter(Q(owner=user) | Q(folder__is_common=True) | Q(is_common=True)).order_by('-updated_at')
 
     def perform_create(self, serializer):
         serializer.save(owner=self.request.user)

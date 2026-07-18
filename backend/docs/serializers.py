@@ -30,7 +30,7 @@ class DocumentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Document
-        fields = ['id', 'title', 'content', 'folder', 'file', 'file_url', 'file_name', 'file_size', 'updatedAt', 'author', 'is_shared']
+        fields = ['id', 'title', 'content', 'folder', 'file', 'file_url', 'file_name', 'file_size', 'updatedAt', 'author', 'is_shared', 'is_common']
         read_only_fields = ['owner']
 
     def get_updatedAt(self, obj):

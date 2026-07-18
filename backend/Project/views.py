@@ -451,8 +451,8 @@ class TaskViewSet(TenantModelViewSet):
         for cl in checklists_data:
             TaskChecklist.objects.create(
                 task=task,
-                title=cl.get('title', 'Untitled Item'),
-                is_completed=cl.get('is_completed', False),
+                title=cl.get('title') or cl.get('text', 'Untitled Item'),
+                is_completed=cl.get('is_completed') or cl.get('completed', False),
                 organization=org
             )
 
