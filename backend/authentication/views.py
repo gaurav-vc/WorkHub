@@ -227,9 +227,16 @@ class ApproveUserView(APIView):
             if not role_id:
                 return Response({'error': 'role_id is required for approval'}, status=400)
                 
-            role = Role.objects.filter(id=role_id).first()
-            if not role:
-                return Response({'error': 'Invalid role'}, status=400)
+            # Frontend now sends role_id from role_base_access.models.Role
+            from role_base_access.models import Role as RBACRole
+            rbac_role = RBACRole.objects.filter(id=role_id).first()
+            if not rbac_role:
+                # Fallback to direct Auth Role id if provided
+                role = Role.objects.filter(id=role_id).first()
+                if not role:
+                    return Response({'error': 'Invalid role'}, status=400)
+            else:
+                role, _ = Role.objects.get_or_create(name=rbac_role.name)
                 
             user.is_active = True
             user.save()
@@ -455,7 +462,13 @@ class CreateActiveUserView(APIView):
         
         # Link to Auth Role
         if department_id:
-            role = Role.objects.filter(id=department_id).first()
+            from role_base_access.models import Role as RBACRole
+            rbac_role = RBACRole.objects.filter(id=department_id).first()
+            if rbac_role:
+                role, _ = Role.objects.get_or_create(name=rbac_role.name)
+            else:
+                role = Role.objects.filter(id=department_id).first()
+                
             if role:
                 profile, _ = UserProfile.objects.get_or_create(user=user)
                 profile.role_relationship = role
@@ -651,7 +664,13 @@ class CreateAdminView(APIView):
         user.save()
 
         if department_id:
-            role = Role.objects.filter(id=department_id).first()
+            from role_base_access.models import Role as RBACRole
+            rbac_role = RBACRole.objects.filter(id=department_id).first()
+            if rbac_role:
+                role, _ = Role.objects.get_or_create(name=rbac_role.name)
+            else:
+                role = Role.objects.filter(id=department_id).first()
+                
             if role:
                 profile, _ = UserProfile.objects.get_or_create(user=user)
                 profile.role_relationship = role

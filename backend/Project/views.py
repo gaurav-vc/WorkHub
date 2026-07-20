@@ -396,6 +396,13 @@ class TaskViewSet(TenantModelViewSet):
             data['assigned_to'] = data.get('assignedTo')
             
         assignees = data.get('assigneeIds', [])
+        if isinstance(assignees, str):
+            import json
+            try:
+                assignees = json.loads(assignees)
+            except:
+                assignees = []
+                
         assigned_to_user = request.user
         if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
             try:
@@ -481,25 +488,107 @@ class TaskViewSet(TenantModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
-        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        # Map frontend camelCase to backend snake_case for updates
         if data.get('dueDate'):
             data['due_date'] = data.get('dueDate')
         if data.get('dueTime'):
             data['due_time'] = data.get('dueTime')
             
+        assignees = data.get('assigneeIds', [])
+        if isinstance(assignees, str):
+            import json
+            try:
+                assignees = json.loads(assignees)
+            except:
+                assignees = []
+                
+        if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
+            try:
+                from django.contrib.auth.models import User
+                data['assigned_to'] = User.objects.get(id=assignees[0]).id
+            except:
+                pass
+        elif data.get('assignedTo') and data.get('assignedTo') != "null":
+            data['assigned_to'] = data.get('assignedTo')
+            
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
 
-        subtask_updates = request.data.get('subtask_updates', [])
         from .models import Task, TaskChecklist
-        for st_upd in subtask_updates:
+        
+        # Handle subtasks sync
+        subtasks_data = data.get('subtasks', [])
+        if isinstance(subtasks_data, str):
             try:
-                st = Task.objects.get(id=st_upd['id'], parent_task=instance)
-                st.status = st_upd['status']
-                st.save()
+                subtasks_data = json.loads(subtasks_data)
             except:
-                pass
+                subtasks_data = []
+        if isinstance(subtasks_data, list):
+            existing_subtask_ids = set()
+            for st in subtasks_data:
+                st_id = st.get('id')
+                if st_id and str(st_id).startswith('st-'):
+                    # New subtask from frontend UI
+                    new_st = Task.objects.create(
+                        title=st.get('title', 'Untitled Subtask'),
+                        status=st.get('status', 'pending'),
+                        parent_task=instance,
+                        project=instance.project,
+                        created_by=request.user,
+                        assigned_to=instance.assigned_to,
+                        due_date=instance.due_date,
+                        organization=instance.organization
+                    )
+                    existing_subtask_ids.add(new_st.id)
+                elif st_id:
+                    try:
+                        existing = Task.objects.get(id=st_id, parent_task=instance)
+                        existing.title = st.get('title', existing.title)
+                        existing.status = st.get('status', existing.status)
+                        existing.save()
+                        existing_subtask_ids.add(existing.id)
+                    except:
+                        pass
+            
+            if data.get('subtasks'):
+                # Delete subtasks that were removed in the UI
+                Task.objects.filter(parent_task=instance).exclude(id__in=existing_subtask_ids).delete()
+
+        # Handle checklists sync
+        checklists_data = data.get('checklist', [])
+        if not checklists_data:
+            checklists_data = data.get('checklists', [])
+            
+        if isinstance(checklists_data, str):
+            try:
+                checklists_data = json.loads(checklists_data)
+            except:
+                checklists_data = []
+        if isinstance(checklists_data, list):
+            existing_cl_ids = set()
+            for cl in checklists_data:
+                cl_id = cl.get('id')
+                if cl_id and str(cl_id).startswith('cl-'):
+                    new_cl = TaskChecklist.objects.create(
+                        task=instance,
+                        title=cl.get('title') or cl.get('text', 'Untitled Item'),
+                        is_completed=cl.get('is_completed') or cl.get('completed', False),
+                        organization=instance.organization
+                    )
+                    existing_cl_ids.add(new_cl.id)
+                elif cl_id:
+                    try:
+                        existing = TaskChecklist.objects.get(id=cl_id, task=instance)
+                        existing.title = cl.get('title') or cl.get('text', existing.title)
+                        existing.is_completed = cl.get('is_completed') or cl.get('completed', existing.is_completed)
+                        existing.save()
+                        existing_cl_ids.add(existing.id)
+                    except:
+                        pass
+            
+            if data.get('checklist') or data.get('checklists'):
+                TaskChecklist.objects.filter(task=instance).exclude(id__in=existing_cl_ids).delete()
                 
         checklist_updates = request.data.get('checklist_updates', [])
         for cl_upd in checklist_updates:
