@@ -8,4 +8,5 @@ urlpatterns = [
     path('events/<int:pk>/delete/', views.event_delete, name='event_delete'),
     path('tasks/create/', views.create_task_calendar, name='create_task_calendar'),
     path('employees/', views.get_all_employees, name='get_all_employees'),
+    path('generate-link/', views.generate_meeting_link, name='generate_meeting_link'),
 ]
