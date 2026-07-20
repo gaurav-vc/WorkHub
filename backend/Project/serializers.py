@@ -38,6 +38,7 @@ class TaskSerializer(serializers.ModelSerializer):
     chats = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     assignee_detail = serializers.SerializerMethodField()
+    health_status = serializers.ReadOnlyField()
 
     class Meta:
         model = Task

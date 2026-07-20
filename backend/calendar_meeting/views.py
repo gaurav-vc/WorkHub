@@ -1,5 +1,6 @@
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
+from role_base_access.permissions import require_rbac_permission
 from rest_framework.response import Response
 from .models import Meeting
 from django.utils import timezone
@@ -12,6 +13,7 @@ import smtplib
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
+@require_rbac_permission('tasks-calendar')
 def event_list(request):
     from django.db.models import Q
     from Project.models import Task
@@ -40,8 +42,25 @@ def event_list(request):
             "is_task": False
         })
         
-    # Fetch tasks assigned to or created by user
-    tasks = Task.objects.filter(Q(assigned_to=request.user) | Q(created_by=request.user)).distinct()
+    # Fetch tasks assigned to or created by user, OR all tasks if they have cross-department access
+    global_access = False
+    if request.user.is_superuser:
+        global_access = True
+    else:
+        profile = getattr(request.user, 'auth_profile', None)
+        if profile:
+            if profile.user_type in ['super_user', 'site_admin']:
+                global_access = True
+            elif profile.role_relationship:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(name=profile.role_relationship.name).first()
+                if rbac_role and getattr(rbac_role, 'cross_department_access', False):
+                    global_access = True
+
+    if global_access:
+        tasks = Task.objects.all().distinct()
+    else:
+        tasks = Task.objects.filter(Q(assigned_to=request.user) | Q(created_by=request.user)).distinct()
     for t in tasks:
         # Convert date to datetime for unified representation
         task_due_date = t.due_date if t.due_date else timezone.now().date()
@@ -65,12 +84,16 @@ def event_list(request):
             "status": t.status,
             "priority": t.priority,
             "assigned_to": t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Unassigned",
+            "healthStatus": getattr(t, 'health_status', None),
+            "isQueued": getattr(t, 'is_queued', False),
+            "isUrgent": getattr(t, 'is_urgent', False),
         })
         
     return Response(data)
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_rbac_permission('tasks-calendar')
 def create_task_calendar(request):
     try:
         from Project.models import Task
@@ -96,6 +119,13 @@ def create_task_calendar(request):
                 assigned_to = request.user
             else:
                 assigned_to = User.objects.filter(id=assignee_id).first()
+                
+        time_interval_minutes = None
+        if 'time_interval_minutes' in request.data:
+            try:
+                time_interval_minutes = int(request.data['time_interval_minutes'])
+            except (ValueError, TypeError):
+                pass
             
         task = Task.objects.create(
             title=title,
@@ -105,7 +135,8 @@ def create_task_calendar(request):
             project=project,
             assigned_to=assigned_to or request.user,
             created_by=request.user,
-            due_date=due_date
+            due_date=due_date,
+            time_interval_minutes=time_interval_minutes
         )
         
         return Response({
@@ -117,6 +148,7 @@ def create_task_calendar(request):
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
+@require_rbac_permission('tasks-calendar')
 def event_create(request):
     try:
         title = request.data.get('title')
@@ -253,6 +285,7 @@ def event_create(request):
 
 @api_view(['PUT', 'PATCH'])
 @permission_classes([IsAuthenticated])
+@require_rbac_permission('tasks-calendar')
 def event_update(request, pk):
     try:
         meeting = Meeting.objects.get(id=pk)
@@ -294,6 +327,7 @@ def event_update(request, pk):
 
 @api_view(['DELETE'])
 @permission_classes([IsAuthenticated])
+@require_rbac_permission('tasks-calendar')
 def event_delete(request, pk):
     try:
         meeting = Meeting.objects.get(id=pk)
@@ -313,16 +347,23 @@ def event_delete(request, pk):
 @permission_classes([IsAuthenticated])
 def get_all_employees(request):
     """Returns a list of users/employees for selection lists in administration views."""
+    from directory.models import Employee
     users = User.objects.all().select_related('auth_profile')
     user_list = []
     
+    # Pre-fetch employees to match by email to get department
+    employees = {e.email: e.department for e in Employee.objects.all() if e.email}
+    
     for u in users:
         role = u.auth_profile.role if hasattr(u, 'auth_profile') else 'EMP'
+        department = employees.get(u.email, "General")
+        
         user_list.append({
             "id": u.id,
             "username": u.username,
             "name": u.get_full_name() or u.username,
-            "role": role
+            "role": role,
+            "department": department
         })
         
     return Response(user_list)

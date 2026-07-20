@@ -10,7 +10,9 @@ from rest_framework.response import Response
 from rest_framework.decorators import action
 
 class HRRequestViewSet(viewsets.ModelViewSet):
-    permission_classes = [IsAuthenticated]
+    from role_base_access.permissions import RBACPermission
+    permission_classes = [IsAuthenticated, RBACPermission]
+    rbac_module = 'hr-requests'
     serializer_class = HRRequestSerializer
 
     def get_queryset(self):

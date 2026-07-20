@@ -98,6 +98,12 @@ class Task(TenantModel):
     created_at = models.DateTimeField(auto_now_add=True)
     completion_date = models.DateTimeField(null=True, blank=True)
     
+    # Task Queue & Health tracking
+    time_interval_minutes = models.IntegerField(null=True, blank=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    is_queued = models.BooleanField(default=False)
+    deadline_alert_sent = models.BooleanField(default=False)
+    
     start_day = models.IntegerField(default=0)
     duration = models.IntegerField(default=3)
     actual_effort = models.IntegerField(default=0)
@@ -113,6 +119,20 @@ class Task(TenantModel):
 
     def __str__(self):
         return f"[{self.priority}] {self.title}"
+
+    @property
+    def health_status(self):
+        if not self.started_at or not self.time_interval_minutes:
+            return 'green'
+        
+        elapsed_time = timezone.now() - self.started_at
+        elapsed_minutes = elapsed_time.total_seconds() / 60.0
+        
+        if elapsed_minutes > self.time_interval_minutes:
+            return 'red'
+        elif elapsed_minutes >= (self.time_interval_minutes * 0.75):
+            return 'yellow'
+        return 'green'
 
     def save(self, *args, **kwargs):
         is_new = self.pk is None
@@ -146,6 +166,53 @@ class Task(TenantModel):
             if incomplete_deps.exists():
                 raise ValidationError("Cannot complete this task because it has incomplete blocking dependencies.")
 
+        # Queue Logic
+        if self.assigned_to and self.status not in ['done', 'completed', 'delayed', 'closed']:
+            # Find organization and granular limits
+            max_active_tasks = 4
+            try:
+                if hasattr(self.assigned_to, 'org_profile') and self.assigned_to.org_profile.organization:
+                    org = self.assigned_to.org_profile.organization
+                    adv_settings = org.advanced_settings if isinstance(org.advanced_settings, dict) else {}
+                    
+                    # 1. Global default
+                    max_active_tasks = int(adv_settings.get('max_active_tasks', 4))
+                    
+                    # 2. Check Department limit
+                    dept_limits = adv_settings.get('department_task_limits', {})
+                    user_limits = adv_settings.get('employee_task_limits', {})
+                    
+                    if str(self.assigned_to.id) in user_limits:
+                        max_active_tasks = int(user_limits[str(self.assigned_to.id)])
+                    else:
+                        try:
+                            from directory.models import Employee
+                            emp = Employee.objects.get(email=self.assigned_to.email)
+                            if emp.department in dept_limits:
+                                max_active_tasks = int(dept_limits[emp.department])
+                        except Exception:
+                            pass
+            except Exception:
+                pass
+
+            # Count active tasks for this user (not queued, not done)
+            if is_new or newly_assigned_user:
+                active_count = Task.objects.filter(
+                    assigned_to=self.assigned_to,
+                    is_queued=False
+                ).exclude(status__in=['done', 'completed', 'closed']).count()
+                
+                if active_count >= max_active_tasks:
+                    self.is_queued = True
+                    self.status = 'pending'
+                else:
+                    self.is_queued = False
+                    if not self.started_at:
+                        self.started_at = timezone.now()
+            else:
+                if not self.is_queued and not self.started_at:
+                    self.started_at = timezone.now()
+
         super().save(*args, **kwargs)
 
         if newly_assigned_user:
@@ -163,6 +230,20 @@ class Task(TenantModel):
         if status_changed_to_done:
             if not self.completion_date:
                 self.completion_date = timezone.now()
+            
+            # Queue Pull Logic: when a task is completed, pull the oldest queued task
+            if self.assigned_to:
+                queued_task = Task.objects.filter(
+                    assigned_to=self.assigned_to,
+                    is_queued=True
+                ).order_by('created_at').first()
+                
+                if queued_task:
+                    queued_task.is_queued = False
+                    queued_task.status = 'in_progress'
+                    queued_task.started_at = timezone.now()
+                    queued_task.save()
+            
             target_user = self.assigned_to or self.created_by
             if target_user and hasattr(target_user, 'auth_profile'):
                 profile = target_user.auth_profile

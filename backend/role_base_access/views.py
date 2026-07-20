@@ -286,15 +286,15 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 
                 # Default permissions
                 if role == 'admin':
-                    default_perms = {'view': True, 'create': True, 'edit': True}
+                    default_perms = {'view': True, 'create': True, 'edit': True, 'delete': True}
                 elif role == 'user':
                     if is_admin_route:
-                        default_perms = {'view': False, 'create': False, 'edit': False}
+                        default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
                     else:
-                        default_perms = {'view': True, 'create': True, 'edit': True}
+                        default_perms = {'view': True, 'create': True, 'edit': True, 'delete': False}
                 else:
                     # For all custom roles, default to False so the Admin must explicitly set boundaries
-                    default_perms = {'view': False, 'create': False, 'edit': False}
+                    default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
                 
                 obj, created = RoleAccessMapping.objects.get_or_create(
                     id=mapping_id,
@@ -312,7 +312,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 if not created:
                     perms = obj.permissions
                     modified = False
-                    for key in ['view', 'create', 'edit']:
+                    for key in ['view', 'create', 'edit', 'delete']:
                         if key not in perms:
                             perms[key] = default_perms[key]
                             modified = True

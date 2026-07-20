@@ -139,6 +139,12 @@ def add_task(request, project_id):
         'description': description,
         'created_by': request.user if request.user.is_authenticated else None,
     }
+    
+    if 'time_interval_minutes' in request.data:
+        try:
+            task_kwargs['time_interval_minutes'] = int(request.data['time_interval_minutes'])
+        except (ValueError, TypeError):
+            pass
     if 'assigned_to' in request.data:
         assigned_to_id = request.data['assigned_to']
         if assigned_to_id is None or assigned_to_id == "unassigned":
@@ -355,15 +361,30 @@ class TaskViewSet(TenantModelViewSet):
     queryset = Task.objects.all()
     from .serializers import TaskSerializer
     serializer_class = TaskSerializer
-    permission_classes = [IsAuthenticated]
+    from role_base_access.permissions import RBACPermission
+    permission_classes = [IsAuthenticated, RBACPermission]
+    rbac_module = 'tasks-projects'
 
     def get_queryset(self):
         queryset = super().get_queryset()
         user = self.request.user
         
-        # Site admins and super users should see all tasks in the org for resource planning
+        # Site admins, super users, and roles with cross-department access see all tasks
+        global_access = False
+        if user.is_superuser:
+            global_access = True
+            
         profile = getattr(user, 'auth_profile', None)
-        if profile and profile.user_type in ['super_user', 'site_admin']:
+        if profile:
+            if profile.user_type in ['super_user', 'site_admin']:
+                global_access = True
+            elif profile.role_relationship:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(name=profile.role_relationship.name).first()
+                if rbac_role and getattr(rbac_role, 'cross_department_access', False):
+                    global_access = True
+                    
+        if global_access:
             return queryset.order_by('-created_at')
             
         from django.db.models import Q

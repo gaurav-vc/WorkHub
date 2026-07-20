@@ -25,6 +25,7 @@ class Organization(models.Model):
     # Advanced Options
     white_label = models.BooleanField(default=False)
     sub_domain = models.CharField(max_length=255, blank=True, null=True)
+    advanced_settings = models.JSONField(default=dict, blank=True)
     
     # Billing
     solution_type = models.CharField(max_length=255, blank=True, null=True)
