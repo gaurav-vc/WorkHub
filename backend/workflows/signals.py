@@ -6,6 +6,7 @@ from .utils import execute_workflow_engine
 
 @receiver(post_save, sender=Task)
 def task_created_trigger(sender, instance, created, **kwargs):
+    if kwargs.get('raw', False): return
     """
     Triggers workflows that have 'Task Created' as their starting node.
     """

@@ -135,6 +135,10 @@ class Task(TenantModel):
         return 'green'
 
     def save(self, *args, **kwargs):
+        if kwargs.get('raw', False):
+            super().save(*args, **kwargs)
+            return
+
         is_new = self.pk is None
         status_changed_to_done = False
         status_changed_to_delayed = False
@@ -218,12 +222,14 @@ class Task(TenantModel):
         if newly_assigned_user:
             try:
                 from workspace.models import Notification
-                Notification.objects.create(
-                    type="task_assigned",
-                    title="Task Assigned",
-                    message=f"@{newly_assigned_user.username} has been assigned to task '{self.title}'",
-                    link="/projects"
-                )
+                from django.db import transaction
+                with transaction.atomic():
+                    Notification.objects.create(
+                        type="task_assigned",
+                        title="Task Assigned",
+                        message=f"@{newly_assigned_user.username} has been assigned to task '{self.title}'",
+                        link="/projects"
+                    )
             except Exception as e:
                 print(f"Error creating notification: {e}")
 

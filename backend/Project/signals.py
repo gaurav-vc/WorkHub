@@ -21,6 +21,7 @@ from calendar_meeting.models import Meeting
 
 @receiver(post_save, sender=Task)
 def sync_task_to_card_and_event(sender, instance, created, **kwargs):
+    if kwargs.get('raw', False): return
     if is_syncing():
         return
     
@@ -119,6 +120,7 @@ def sync_task_to_card_and_event(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Card)
 def sync_card_to_task_and_event(sender, instance, created, **kwargs):
+    if kwargs.get('raw', False): return
     if is_syncing():
         return
         
@@ -192,6 +194,7 @@ def sync_card_to_task_and_event(sender, instance, created, **kwargs):
 
 @receiver(post_save, sender=Meeting)
 def sync_event_to_task_and_card(sender, instance, created, **kwargs):
+    if kwargs.get('raw', False): return
     if is_syncing():
         return
         
@@ -264,6 +267,7 @@ def sync_event_to_task_and_card(sender, instance, created, **kwargs):
 
 @receiver(post_delete, sender=Task)
 def delete_synced_task(sender, instance, **kwargs):
+    if kwargs.get('raw', False): return
     if is_syncing(): return
     if getattr(instance, 'project_id', None) is not None: return
     

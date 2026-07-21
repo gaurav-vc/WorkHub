@@ -114,7 +114,7 @@ DATABASES = {
 }
 
 # If a DATABASE_URL environment variable is provided (e.g. on the live server), 
-# it will override the sqlite3 database above and connect to PostgreSQL.
+# it will override the sqlite3 database above and connect to pip greSQL.
 db_from_env = dj_database_url.config(conn_max_age=600)
 if db_from_env:
     DATABASES['default'].update(db_from_env)

@@ -87,6 +87,8 @@ class GlobalVideoSettings(models.Model):
     assessment_question_count = models.IntegerField(default=50)
     assessment_passing_score = models.IntegerField(default=80)
     max_assessment_attempts = models.IntegerField(default=3)
+    max_assessment_warnings = models.IntegerField(default=2)
+    require_video_completion = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):

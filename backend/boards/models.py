@@ -62,12 +62,14 @@ class Card(models.Model):
         if newly_assigned_user:
             try:
                 from workspace.models import Notification
-                Notification.objects.create(
-                    type="card_assigned",
-                    title="Card Assigned",
-                    message=f"@{newly_assigned_user.username} has been assigned to card '{self.title}'",
-                    link="/collaboration"
-                )
+                from django.db import transaction
+                with transaction.atomic():
+                    Notification.objects.create(
+                        type="card_assigned",
+                        title="Card Assigned",
+                        message=f"@{newly_assigned_user.username} has been assigned to card '{self.title}'",
+                        link="/collaboration"
+                    )
             except Exception as e:
                 print(f"Error creating notification: {e}")
 

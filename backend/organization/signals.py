@@ -8,6 +8,7 @@ import random
 
 @receiver(post_save, sender=Organization)
 def organization_post_save(sender, instance, created, **kwargs):
+    if kwargs.get('raw', False): return
     # Only act if an admin is assigned
     if instance.assigned_admin:
         # Check if we've already onboarded this admin for this organization to prevent duplicate emails
