@@ -367,6 +367,19 @@ class TaskViewSet(TenantModelViewSet):
 
     def get_queryset(self):
         queryset = super().get_queryset()
+        
+        # Optimize N+1 queries heavily used by the TaskSerializer
+        queryset = queryset.select_related(
+            'project', 'project__created_by', 'assigned_to', 'created_by'
+        ).prefetch_related(
+            'comments', 'comments__user',
+            'attachments', 'attachments__uploaded_by',
+            'subtasks', 'subtasks__assigned_to',
+            'blocking_dependencies',
+            'checklists',
+            'chats', 'chats__user'
+        )
+
         user = self.request.user
         
         # Site admins, super users, and roles with cross-department access see all tasks
