@@ -288,10 +288,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 if role == 'admin':
                     default_perms = {'view': True, 'create': True, 'edit': True, 'delete': True}
                 elif role == 'user':
-                    if is_admin_route:
-                        default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
-                    else:
-                        default_perms = {'view': True, 'create': True, 'edit': True, 'delete': False}
+                    default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
                 else:
                     # For all custom roles, default to False so the Admin must explicitly set boundaries
                     default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
@@ -405,6 +402,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         return Response({
             'role': role,
             'username': user.username,
+            'email': user.email,
             'user_type': user_type,
             'access': data
         })

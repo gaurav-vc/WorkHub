@@ -60,7 +60,7 @@ def dashboard(request):
             "priority": c.priority or "P3",
             "status": c.status or "pending",
             "project": c.column.board.title if c.column and c.column.board else "My Board",
-            "dueTime": "",
+            "due_date": c.due_date.isoformat() if c.due_date else None,
         })
 
     pending_tasks_count = Card.objects.filter(assignee=user, status__in=['pending', 'in_progress']).count()
@@ -122,6 +122,39 @@ def dashboard(request):
         "pendingApprovals": len(combined_approvals),
     }
 
+    # Fetch Upcoming Birthdays
+    upcoming_birthdays = []
+    try:
+        from directory.models import Employee
+        # We can just fetch all employees with a date_of_birth, and sort them in Python since SQLite date math is hard.
+        from datetime import date
+        today_date = timezone.now().date()
+        employees_with_dob = Employee.objects.filter(date_of_birth__isnull=False)
+        
+        for emp in employees_with_dob:
+            dob = emp.date_of_birth
+            # Calculate next birthday
+            next_birthday = date(today_date.year, dob.month, dob.day)
+            if next_birthday < today_date:
+                # Birthday already passed this year, so it's next year
+                next_birthday = date(today_date.year + 1, dob.month, dob.day)
+                
+            days_until = (next_birthday - today_date).days
+            if days_until <= 30:
+                upcoming_birthdays.append({
+                    "id": emp.id,
+                    "name": emp.name,
+                    "date": next_birthday.isoformat(),
+                    "days_until": days_until,
+                    "avatar": emp.photo.url if getattr(emp, 'photo', None) else None
+                })
+                
+        # Sort by closest birthday
+        upcoming_birthdays.sort(key=lambda x: x["days_until"])
+    except Exception as e:
+        print("Error fetching birthdays:", e)
+        pass
+
     return Response({
         "currentUser": profile_data,
         "summaryStats": summary,
@@ -130,6 +163,7 @@ def dashboard(request):
         "teamActivity": TeamActivitySerializer(activity_qs, many=True).data,
         "pendingApprovals": combined_approvals,
         "quickLinks": QuickLinkSerializer(quick_links_qs, many=True).data,
+        "upcomingBirthdays": upcoming_birthdays,
     })
 
 

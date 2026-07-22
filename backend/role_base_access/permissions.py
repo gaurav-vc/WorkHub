@@ -38,9 +38,9 @@ def require_rbac_permission(module_name):
             except Exception:
                 pass
 
-            mapping = RoleAccessMapping.objects.filter(role=role, site_name=module_name).first()
+            mapping = RoleAccessMapping.objects.filter(role=role, site_id=module_name).first()
             if not mapping and role not in ['admin', 'user']:
-                mapping = RoleAccessMapping.objects.filter(role='user', site_name=module_name).first()
+                mapping = RoleAccessMapping.objects.filter(role='user', site_id=module_name).first()
                 
             if not mapping:
                 return Response({"error": f"No access mapping found for module {module_name}."}, status=403)
@@ -102,10 +102,10 @@ class RBACPermission(permissions.BasePermission):
         except Exception:
             pass
 
-        mapping = RoleAccessMapping.objects.filter(role=role, site_name=module_name).first()
+        mapping = RoleAccessMapping.objects.filter(role=role, site_id=module_name).first()
         if not mapping and role not in ['admin', 'user']:
             # Fallback to base 'user' role
-            mapping = RoleAccessMapping.objects.filter(role='user', site_name=module_name).first()
+            mapping = RoleAccessMapping.objects.filter(role='user', site_id=module_name).first()
             
         if not mapping:
             return False
