@@ -10,7 +10,9 @@ router.register(r'timeline', GanttTaskViewSet, basename='timeline')
 router.register(r'tasks', TaskViewSet, basename='task')
 
 urlpatterns = [
-    path('admin/', admin.site.urls),
+    # Move admin to /api/admin/ so it doesn't conflict with React's /admin routes
+    # and automatically works with web server proxy configurations for /api/
+    path('api/admin/', admin.site.urls),
     
     # 1. SPECIFIC PATHS FIRST
     # Django will check these specific folders first so they don't get trapped.
