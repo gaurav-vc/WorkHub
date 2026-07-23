@@ -30,6 +30,8 @@ def require_rbac_permission(module_name):
                         return view_func(request, *args, **kwargs)
                     if profile.role_relationship:
                         role = profile.role_relationship.name.lower()
+                        if role in ['site_admin', 'super_user']:
+                            return view_func(request, *args, **kwargs)
                         
                 if role == 'user':
                     emp_profile = getattr(user, 'res_employee', None)
@@ -94,6 +96,8 @@ class RBACPermission(permissions.BasePermission):
                     return True
                 if profile.role_relationship:
                     role = profile.role_relationship.name.lower()
+                    if role in ['site_admin', 'super_user']:
+                        return True
                     
             if role == 'user':
                 emp_profile = getattr(user, 'res_employee', None)

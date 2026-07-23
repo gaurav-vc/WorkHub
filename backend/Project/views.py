@@ -401,7 +401,7 @@ class TaskViewSet(TenantModelViewSet):
             return queryset.order_by('-created_at')
             
         from django.db.models import Q
-        return queryset.filter(Q(assigned_to=user) | Q(created_by=user)).distinct().order_by('-created_at')
+        return queryset.filter(Q(assigned_to=user) | Q(created_by=user)).order_by('-created_at')
 
     def perform_create(self, serializer):
         super().perform_create(serializer, created_by=self.request.user)
