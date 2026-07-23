@@ -522,6 +522,8 @@ class TaskViewSet(TenantModelViewSet):
         partial = kwargs.pop('partial', False)
         instance = self.get_object()
         
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
         # Map frontend camelCase to backend snake_case for updates
         if data.get('dueDate'):
             data['due_date'] = data.get('dueDate')
