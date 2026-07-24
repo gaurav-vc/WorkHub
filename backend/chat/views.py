@@ -38,7 +38,12 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def all_users(self, request):
-        users = User.objects.all()
+        from core.tenant import get_current_organization
+        org = get_current_organization()
+        if org:
+            users = User.objects.filter(org_profile__organization=org)
+        else:
+            users = User.objects.filter(id=request.user.id)
         # Return simple user list for the dropdown
         data = [{"id": u.id, "name": u.get_full_name() or u.username} for u in users]
         return Response(data)

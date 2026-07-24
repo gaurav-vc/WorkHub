@@ -291,17 +291,21 @@ class EmployeeDepartmentView(APIView):
         qs = User.objects.filter(is_active=True).exclude(is_superuser=True).select_related('auth_profile__role_relationship')
         
         # If not superuser, filter by the same organization
+        # If not superuser, filter by the same organization
         if not user.is_superuser:
-            try:
-                # organization profile is in user.org_profile
-                org = user.org_profile.organization
-                if org:
-                    qs = qs.filter(org_profile__organization=org)
-                else:
-                    # If they don't belong to any organization, show none or only themselves
-                    qs = qs.filter(id=user.id)
-            except Exception:
-                pass
+            from core.tenant import get_current_organization, get_current_site
+            org = get_current_organization()
+            if org:
+                qs = qs.filter(org_profile__organization=org)
+                
+                # Site isolation for non-org admins
+                site = get_current_site()
+                user_type = getattr(getattr(user, 'auth_profile', None), 'user_type', 'employee')
+                if site and user_type in ['employee', 'site_admin']:
+                    qs = qs.filter(org_profile__site=site)
+            else:
+                # If they don't belong to any organization, show none or only themselves
+                qs = qs.filter(id=user.id)
                 
         users = qs
         result = []
