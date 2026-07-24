@@ -41,7 +41,7 @@ class UserViewSet(viewsets.ModelViewSet):
             if site:
                 qs = qs.filter(org_profile__site=site)
             else:
-                return User.objects.none()
+                qs = qs.filter(org_profile__site__isnull=True)
             
         return qs
 

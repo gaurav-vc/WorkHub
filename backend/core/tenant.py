@@ -114,7 +114,7 @@ class TenantManager(models.Manager):
                 if site:
                     qs = qs.filter(site=site)
                 else:
-                    return qs.none()
+                    qs = qs.filter(site__isnull=True)
                 
         return qs
 

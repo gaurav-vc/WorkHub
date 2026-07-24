@@ -51,7 +51,7 @@ class TenantModelViewSet(viewsets.ModelViewSet):
             if site:
                 qs = qs.filter(site=site)
             else:
-                return queryset.none()  # Strict isolation: if no site assigned, see nothing
+                qs = qs.filter(site__isnull=True)
                 
         return qs
 
