@@ -32,7 +32,19 @@ class TenantMiddleware:
                 pass
 
         _thread_locals.request = request
+        
+        org_id = request.headers.get('X-Organization-ID')
+        if org_id:
+            _thread_locals.organization_id = org_id
+            
+        site_id = request.headers.get('X-Site-ID')
+        if site_id:
+            _thread_locals.site_id = site_id
         response = self.get_response(request)
         if hasattr(_thread_locals, 'request'):
             del _thread_locals.request
+        if hasattr(_thread_locals, 'organization_id'):
+            del _thread_locals.organization_id
+        if hasattr(_thread_locals, 'site_id'):
+            del _thread_locals.site_id
         return response

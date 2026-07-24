@@ -12,6 +12,7 @@ from .models import Role, OTPToken, UserProfile, Organization
 from .serializers import RoleSerializer, OrganizationSerializer
 from workspace.models import Notification
 from rest_framework.views import APIView
+from django.db import transaction
 from rest_framework.permissions import IsAuthenticated, IsAdminUser, BasePermission
 from rest_framework.decorators import action
 
@@ -110,18 +111,19 @@ class RegisterView(generics.CreateAPIView):
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = User.objects.create_user(username=username, email=email, password=password)
-        user.is_active = False # Require Admin Approval
-        user.save()
-        
-        # Notify admins
-        admins = User.objects.filter(is_superuser=True)
-        if admins.exists():
-            Notification.objects.create(
-                title="New User Registration",
-                message=f"User {username} ({email}) has registered and is pending approval.",
-                type="alert"
-            )
+        with transaction.atomic():
+            user = User.objects.create_user(username=username, email=email, password=password)
+            user.is_active = False # Require Admin Approval
+            user.save()
+            
+            # Notify admins
+            admins = User.objects.filter(is_superuser=True)
+            if admins.exists():
+                Notification.objects.create(
+                    title="New User Registration",
+                    message=f"User {username} ({email}) has registered and is pending approval.",
+                    type="alert"
+                )
 
         return Response({'message': 'User registered successfully and is pending admin approval.'}, status=status.HTTP_201_CREATED)
 
@@ -450,33 +452,32 @@ class CreateActiveUserView(APIView):
             if len(parts) > 1:
                 last_name = parts[1]
 
-        user = User.objects.create_user(
-            username=username, 
-            email=email, 
-            password=password,
-            first_name=first_name,
-            last_name=last_name
-        )
-        user.is_active = True
-        user.save()
-        
-        # Link to Auth Role
-        if department_id:
-            from role_base_access.models import Role as RBACRole
-            rbac_role = RBACRole.objects.filter(id=department_id).first()
-            if rbac_role:
-                role, _ = Role.objects.get_or_create(name=rbac_role.name)
-            else:
-                role = Role.objects.filter(id=department_id).first()
-                
-            if role:
-                profile, _ = UserProfile.objects.get_or_create(user=user)
-                profile.role_relationship = role
-                profile.save()
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username, 
+                email=email, 
+                password=password,
+                first_name=first_name,
+                last_name=last_name
+            )
+            user.is_active = True
+            user.save()
+            
+            # Link to Auth Role
+            if department_id:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(id=department_id).first()
+                if rbac_role:
+                    role, _ = Role.objects.get_or_create(name=rbac_role.name)
+                else:
+                    role = Role.objects.filter(id=department_id).first()
+                    
+                if role:
+                    profile, _ = UserProfile.objects.get_or_create(user=user)
+                    profile.role_relationship = role
+                    profile.save()
 
-        # Link to Organization
-        # Also need to link it in organization.UserProfile
-        try:
+            # Link to Organization
             from organization.models import UserProfile as OrgUserProfile
             # Check if current user is part of an organization
             org = None
@@ -487,8 +488,6 @@ class CreateActiveUserView(APIView):
             if org:
                 org_profile.organization = org
                 org_profile.save()
-        except Exception as e:
-            print(f"Error assigning organization: {e}")
 
         # Send Email to the newly created active user
         from django.core.mail import EmailMultiAlternatives
@@ -652,29 +651,30 @@ class CreateAdminView(APIView):
         first_name = parts[0]
         last_name = parts[1] if len(parts) > 1 else ''
 
-        user = User.objects.create_user(
-            username=username,
-            email=email,
-            password=temp_password,
-            first_name=first_name,
-            last_name=last_name,
-        )
-        user.is_active = True
-        user.is_staff = True  # Grant admin access
-        user.save()
-
-        if department_id:
-            from role_base_access.models import Role as RBACRole
-            rbac_role = RBACRole.objects.filter(id=department_id).first()
-            if rbac_role:
-                role, _ = Role.objects.get_or_create(name=rbac_role.name)
-            else:
-                role = Role.objects.filter(id=department_id).first()
-                
-            if role:
-                profile, _ = UserProfile.objects.get_or_create(user=user)
-                profile.role_relationship = role
-                profile.save()
+        with transaction.atomic():
+            user = User.objects.create_user(
+                username=username,
+                email=email,
+                password=temp_password,
+                first_name=first_name,
+                last_name=last_name,
+            )
+            user.is_active = True
+            user.is_staff = True  # Grant admin access
+            user.save()
+    
+            if department_id:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(id=department_id).first()
+                if rbac_role:
+                    role, _ = Role.objects.get_or_create(name=rbac_role.name)
+                else:
+                    role = Role.objects.filter(id=department_id).first()
+                    
+                if role:
+                    profile, _ = UserProfile.objects.get_or_create(user=user)
+                    profile.role_relationship = role
+                    profile.save()
 
         # Send Email
         from django.core.mail import EmailMultiAlternatives

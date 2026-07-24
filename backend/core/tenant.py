@@ -2,7 +2,20 @@ from django.db import models
 from core.middleware import get_current_user
 from django.core.exceptions import PermissionDenied
 
+from contextlib import contextmanager
+from core.middleware import _thread_locals
+
 def get_current_organization():
+    # 1. Check for explicit organization_id in thread-locals (API Header or Background Context)
+    explicit_org_id = getattr(_thread_locals, 'organization_id', None)
+    if explicit_org_id:
+        try:
+            from organization.models import Organization
+            return Organization.objects.get(id=explicit_org_id)
+        except Exception:
+            pass
+            
+    # 2. Fallback to user profile org
     user = get_current_user()
     if not user or not user.is_authenticated:
         return None
@@ -19,6 +32,16 @@ def get_current_organization():
     return None
 
 def get_current_site():
+    # 1. Check for explicit site_id in thread-locals
+    explicit_site_id = getattr(_thread_locals, 'site_id', None)
+    if explicit_site_id:
+        try:
+            from organization.models import Site
+            return Site.objects.get(id=explicit_site_id)
+        except Exception:
+            pass
+
+    # 2. Fallback to user profile site
     user = get_current_user()
     if not user or not user.is_authenticated:
         return None
@@ -29,6 +52,34 @@ def get_current_site():
     except Exception:
         pass
     return None
+
+@contextmanager
+def tenant_context(organization_id, site_id=None):
+    """
+    Context manager to safely inject organization and site context into background tasks 
+    or internal API logic without needing a fully authenticated HTTP request.
+    """
+    original_org = getattr(_thread_locals, 'organization_id', None)
+    original_site = getattr(_thread_locals, 'site_id', None)
+    
+    _thread_locals.organization_id = organization_id
+    if site_id:
+        _thread_locals.site_id = site_id
+        
+    try:
+        yield
+    finally:
+        if original_org is not None:
+            _thread_locals.organization_id = original_org
+        else:
+            if hasattr(_thread_locals, 'organization_id'):
+                del _thread_locals.organization_id
+                
+        if original_site is not None:
+            _thread_locals.site_id = original_site
+        else:
+            if hasattr(_thread_locals, 'site_id'):
+                del _thread_locals.site_id
 
 class TenantManager(models.Manager):
     def get_queryset(self):
@@ -45,18 +96,6 @@ class TenantManager(models.Manager):
             # Bypass if no user context is found to allow background tasks.
             if user is None:
                 return super().get_queryset()
-            # Fallback: try to use first organization
-            try:
-                from organization.models import Organization, UserProfile as OrgUserProfile
-                first_org = Organization.objects.first()
-                if first_org and user.is_authenticated:
-                    org_profile, _ = OrgUserProfile.objects.get_or_create(user=user)
-                    if not org_profile.organization:
-                        org_profile.organization = first_org
-                        org_profile.save()
-                    org = first_org
-            except Exception:
-                pass
             if not org:
                 # Graceful fallback for fresh deployments: if no organizations exist yet, bypass filtering
                 from organization.models import Organization
@@ -109,16 +148,10 @@ class TenantModel(models.Model):
             else:
                 user = get_current_user()
                 
-                # Fallback to the first organization if one exists
-                from organization.models import Organization
-                fallback_org = Organization.objects.first()
-                if fallback_org:
-                    self.organization = fallback_org
-                else:
-                    if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
-                        raise PermissionDenied("Super Admins cannot create tenant-specific records.")
-                    elif user:
-                        raise PermissionDenied("You must belong to an organization to create records.")
+                if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
+                    raise PermissionDenied("Super Admins cannot create tenant-specific records without an explicit organization.")
+                elif user:
+                    raise PermissionDenied("You must belong to an organization to create records.")
                     
         # Also auto-assign site if it's available and not already set
         if not self.site_id:
