@@ -110,8 +110,11 @@ class TenantManager(models.Manager):
         # Site Isolation Logic
         if user:
             user_type = getattr(getattr(user, 'auth_profile', None), 'user_type', 'employee')
-            if user_type in ['employee', 'site_admin'] and site:
-                qs = qs.filter(site=site)
+            if user_type in ['employee', 'site_admin']:
+                if site:
+                    qs = qs.filter(site=site)
+                else:
+                    return qs.none()
                 
         return qs
 

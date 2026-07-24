@@ -24,19 +24,6 @@ class TenantModelViewSet(viewsets.ModelViewSet):
                 return org_profile.organization
         except Exception:
             pass
-        
-        # Fallback: auto-create org_profile linked to the first org, so users aren't locked out
-        try:
-            from organization.models import Organization, UserProfile as OrgUserProfile
-            first_org = Organization.objects.first()
-            if first_org:
-                org_profile, _ = OrgUserProfile.objects.get_or_create(user=user)
-                if not org_profile.organization:
-                    org_profile.organization = first_org
-                    org_profile.save()
-                return first_org
-        except Exception:
-            pass
             
         return None
 
@@ -53,21 +40,26 @@ class TenantModelViewSet(viewsets.ModelViewSet):
         if not org:
             return queryset.none()
             
-        return queryset.filter(organization=org)
+        qs = queryset.filter(organization=org)
+        
+        # Enforce strict site isolation for non-org admins
+        from core.tenant import get_current_site
+        site = get_current_site()
+        user_type = getattr(profile, 'user_type', 'employee') if profile else 'employee'
+        
+        if user_type in ['employee', 'site_admin']:
+            if site:
+                qs = qs.filter(site=site)
+            else:
+                return queryset.none()  # Strict isolation: if no site assigned, see nothing
+                
+        return qs
 
     def perform_create(self, serializer, **kwargs):
         org = self.get_organization()
         user = self.request.user
         profile = getattr(user, 'auth_profile', None)
         
-        if not org:
-            # Last resort: use first available org
-            try:
-                from organization.models import Organization
-                org = Organization.objects.first()
-            except Exception:
-                pass
-            
         if not org:
             raise PermissionDenied("You must belong to an organization to create records.")
             

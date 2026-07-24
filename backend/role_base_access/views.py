@@ -37,8 +37,11 @@ class UserViewSet(viewsets.ModelViewSet):
         
         site = get_current_site()
         user_type = getattr(getattr(user, 'auth_profile', None), 'user_type', 'employee')
-        if user_type in ['employee', 'site_admin'] and site:
-            qs = qs.filter(org_profile__site=site)
+        if user_type in ['employee', 'site_admin']:
+            if site:
+                qs = qs.filter(org_profile__site=site)
+            else:
+                return User.objects.none()
             
         return qs
 
