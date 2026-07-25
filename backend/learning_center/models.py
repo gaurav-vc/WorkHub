@@ -36,22 +36,22 @@ class Course(TenantModel):
     def __str__(self):
         return self.title
 
-class CourseTopic(models.Model):
+class CourseTopic(TenantModel):
     course = models.ForeignKey(Course, related_name='topics', on_delete=models.CASCADE)
     title = models.CharField(max_length=255)
 
-class CoursePoint(models.Model):
+class CoursePoint(TenantModel):
     topic = models.ForeignKey(CourseTopic, related_name='points', on_delete=models.CASCADE)
     name = models.CharField(max_length=255)
     video_link = models.URLField(max_length=500, null=True, blank=True)
     time = models.CharField(max_length=100, null=True, blank=True)
 
-class CourseFAQ(models.Model):
+class CourseFAQ(TenantModel):
     course = models.ForeignKey(Course, related_name='faqs', on_delete=models.CASCADE)
     question = models.CharField(max_length=500)
     answer = models.TextField()
 
-class CourseAccessRequest(models.Model):
+class CourseAccessRequest(TenantModel):
     course = models.ForeignKey(Course, related_name='access_requests', on_delete=models.CASCADE)
     employee_name = models.CharField(max_length=255)
     status = models.CharField(max_length=50, default='Pending') # Pending, Approved, Rejected
@@ -61,7 +61,7 @@ class CourseAccessRequest(models.Model):
     def __str__(self):
         return f"{self.employee_name} - {self.course.title} ({self.status})"
 
-class CertificateTemplate(models.Model):
+class CertificateTemplate(TenantModel):
     name = models.CharField(max_length=255)
     background_image = models.ImageField(upload_to='certificates/', null=True, blank=True)
     title_text = models.CharField(max_length=255, default='Certificate of Completion')
@@ -74,11 +74,11 @@ class CertificateTemplate(models.Model):
     def __str__(self):
         return self.name
 
-class UploadedVideo(models.Model):
+class UploadedVideo(TenantModel):
     file = models.FileField(upload_to='course_videos/')
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
-class GlobalVideoSettings(models.Model):
+class GlobalVideoSettings(TenantModel):
     # This acts as a singleton, only the first row will be used.
     auto_pause = models.BooleanField(default=True)
     idle_timeout_seconds = models.IntegerField(default=120)
@@ -94,7 +94,7 @@ class GlobalVideoSettings(models.Model):
     def __str__(self):
         return "Global Video Settings"
 
-class VideoProgress(models.Model):
+class VideoProgress(TenantModel):
     employee_name = models.CharField(max_length=255)
     course_point = models.ForeignKey(CoursePoint, related_name='progress', on_delete=models.CASCADE)
     max_progress_seconds = models.FloatField(default=0.0)
@@ -111,7 +111,7 @@ class VideoProgress(models.Model):
 
 # --- Advanced Assessment & Quiz Architecture ---
 
-class CoursePointQuestion(models.Model):
+class CoursePointQuestion(TenantModel):
     course_point = models.ForeignKey(CoursePoint, related_name='mini_quiz', on_delete=models.CASCADE)
     question_text = models.CharField(max_length=1000)
     option_a = models.CharField(max_length=500)
@@ -120,7 +120,7 @@ class CoursePointQuestion(models.Model):
     option_d = models.CharField(max_length=500)
     correct_option = models.CharField(max_length=1, choices=[('A','A'), ('B','B'), ('C','C'), ('D','D')])
 
-class QuestionBank(models.Model):
+class QuestionBank(TenantModel):
     course = models.ForeignKey(Course, related_name='question_bank', on_delete=models.CASCADE)
     question_text = models.CharField(max_length=1000)
     option_a = models.CharField(max_length=500)
@@ -129,7 +129,7 @@ class QuestionBank(models.Model):
     option_d = models.CharField(max_length=500)
     correct_option = models.CharField(max_length=1, choices=[('A','A'), ('B','B'), ('C','C'), ('D','D')])
 
-class AssessmentSession(models.Model):
+class AssessmentSession(TenantModel):
     employee_name = models.CharField(max_length=255)
     course = models.ForeignKey(Course, on_delete=models.CASCADE)
     score = models.FloatField(default=0.0)
@@ -138,7 +138,7 @@ class AssessmentSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
-class AssessmentAnswer(models.Model):
+class AssessmentAnswer(TenantModel):
     session = models.ForeignKey(AssessmentSession, related_name='answers', on_delete=models.CASCADE)
     question = models.ForeignKey(QuestionBank, on_delete=models.CASCADE)
     selected_option = models.CharField(max_length=1, choices=[('A','A'), ('B','B'), ('C','C'), ('D','D')])

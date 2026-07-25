@@ -1,10 +1,11 @@
 from django.db import models
+from core.tenant import TenantModel
 from django.contrib.auth import get_user_model
 
 
 User = get_user_model()
 
-class AIAgent(models.Model):
+class AIAgent(TenantModel):
     name = models.CharField(max_length=255)
     type = models.CharField(max_length=50) # 'chat', 'docs', 'hr', etc.
     configuration = models.JSONField(default=dict)
@@ -14,7 +15,7 @@ class AIAgent(models.Model):
     def __str__(self):
         return f"{self.name} ({self.type})"
 
-class AIConversation(models.Model):
+class AIConversation(TenantModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='ai_conversations')
     company = models.CharField(max_length=255, null=True, blank=True)
     agent = models.CharField(max_length=50, default='chat')
@@ -25,7 +26,7 @@ class AIConversation(models.Model):
     def __str__(self):
         return f"Conversation {self.id} - {self.user.username}"
 
-class AIMessage(models.Model):
+class AIMessage(TenantModel):
     conversation = models.ForeignKey(AIConversation, on_delete=models.CASCADE, related_name='messages')
     role = models.CharField(max_length=20) # 'user', 'assistant', 'system'
     content = models.TextField()
@@ -35,7 +36,7 @@ class AIMessage(models.Model):
     def __str__(self):
         return f"{self.role} in {self.conversation.id}"
 
-class AIUsageLog(models.Model):
+class AIUsageLog(TenantModel):
     company = models.CharField(max_length=255, null=True, blank=True)
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     agent = models.CharField(max_length=50)
@@ -43,7 +44,7 @@ class AIUsageLog(models.Model):
     cost_estimate = models.DecimalField(max_digits=10, decimal_places=4, default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
-class AIDocumentEmbedding(models.Model):
+class AIDocumentEmbedding(TenantModel):
     company = models.CharField(max_length=255, null=True, blank=True)
     document_type = models.CharField(max_length=50) # 'knowledge_base', 'doc'
     reference_id = models.IntegerField()

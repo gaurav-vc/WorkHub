@@ -127,14 +127,14 @@ class TenantModel(models.Model):
         on_delete=models.CASCADE,
         null=True,  # Set to True temporarily for soft migration
         blank=True,
-        related_name='%(class)s_records'
+        related_name='%(app_label)s_%(class)s_records'
     )
     site = models.ForeignKey(
         'organization.Site',
         on_delete=models.CASCADE,
         null=True,
         blank=True,
-        related_name='%(class)s_site_records'
+        related_name='%(app_label)s_%(class)s_site_records'
     )
 
     objects = TenantManager()

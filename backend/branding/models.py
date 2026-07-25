@@ -1,6 +1,7 @@
 from django.db import models
+from core.tenant import TenantModel
 
-class BrandSetting(models.Model):
+class BrandSetting(TenantModel):
     companyName = models.CharField(max_length=150, default="WorkHub")
     primaryColor = models.CharField(max_length=20, default="#2563EB")
     accentColor = models.CharField(max_length=20, default="#7C3AED")

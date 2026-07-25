@@ -358,6 +358,18 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
             user_type = 'super_user'
             role = 'admin'
                 
+        org_name = None
+        site_name = None
+        try:
+            org_profile = getattr(user, 'org_profile', None)
+            if org_profile:
+                if org_profile.organization:
+                    org_name = org_profile.organization.name
+                if org_profile.site:
+                    site_name = org_profile.site.name
+        except Exception:
+            pass
+                
         mappings = RoleAccessMapping.objects.filter(role=role)
             
         with open('debug_my_access.txt', 'a') as f:
@@ -407,6 +419,8 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
             'username': user.username,
             'email': user.email,
             'user_type': user_type,
+            'org_name': org_name,
+            'site_name': site_name,
             'access': data
         })
 

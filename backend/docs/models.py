@@ -1,9 +1,10 @@
 from django.db import models
+from core.tenant import TenantModel
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-class Folder(models.Model):
+class Folder(TenantModel):
     name = models.CharField(max_length=255)
     parent = models.ForeignKey('self', on_delete=models.CASCADE, null=True, blank=True, related_name='subfolders')
     owner = models.ForeignKey(User, on_delete=models.CASCADE, related_name='owned_folders')
@@ -14,7 +15,7 @@ class Folder(models.Model):
     def __str__(self):
         return self.name
 
-class Document(models.Model):
+class Document(TenantModel):
     title = models.CharField(max_length=255)
     file = models.FileField(upload_to='docs_files/', null=True, blank=True)
     content = models.TextField(blank=True, help_text="Used for rich text notes if no file is uploaded")
@@ -47,7 +48,7 @@ class Document(models.Model):
                 return ""
         return ""
 
-class SharedItem(models.Model):
+class SharedItem(TenantModel):
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, null=True, blank=True, related_name='shares')
     document = models.ForeignKey(Document, on_delete=models.CASCADE, null=True, blank=True, related_name='shares')
     shared_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='items_shared_by')

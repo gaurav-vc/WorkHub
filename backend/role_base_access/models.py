@@ -20,10 +20,10 @@ class Role(TenantModel):
     def __str__(self):
         return f"{self.name} ({self.code})"
 
-class RoleAccessMapping(models.Model):
+class RoleAccessMapping(TenantModel):
     # Using the exact "id" structure from your frontend (e.g., "1::pms_admin")
     id = models.CharField(max_length=255, primary_key=True)
-    site_id = models.CharField(max_length=255)
+    frontend_site_id = models.CharField(max_length=255)
     site_name = models.CharField(max_length=255)
     role = models.CharField(max_length=100)
     title = models.CharField(max_length=255)
@@ -42,7 +42,7 @@ class RoleAccessMapping(models.Model):
     def __str__(self):
         return self.title
 
-class FeatureAccessRequest(models.Model):
+class FeatureAccessRequest(TenantModel):
     user = models.ForeignKey(User, on_delete=models.CASCADE, related_name='feature_requests')
     module_name = models.CharField(max_length=100)
     status = models.CharField(max_length=20, default='pending')
@@ -51,4 +51,4 @@ class FeatureAccessRequest(models.Model):
     resolved_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, related_name='resolved_feature_requests')
 
     def __str__(self):
-        return f"{self.user.username} - {self.module_name} ({self.status})"
+        return f"{self.user.username} - {self.module_name} ({self.status})"

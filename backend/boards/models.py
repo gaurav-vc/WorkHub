@@ -1,9 +1,10 @@
 from django.db import models
+from core.tenant import TenantModel
 from django.contrib.auth import get_user_model
 
 User = get_user_model()
 
-class Board(models.Model):
+class Board(TenantModel):
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     template_type = models.CharField(max_length=50) # e.g., 'sales', 'project'
@@ -14,7 +15,7 @@ class Board(models.Model):
     def __str__(self):
         return self.title
 
-class Column(models.Model):
+class Column(TenantModel):
     board = models.ForeignKey(Board, on_delete=models.CASCADE, related_name='columns')
     title = models.CharField(max_length=100)
     color = models.CharField(max_length=50, default="bg-primary")
@@ -23,7 +24,7 @@ class Column(models.Model):
     def __str__(self):
         return self.title
 
-class Card(models.Model):
+class Card(TenantModel):
     column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name='cards')
     title = models.CharField(max_length=255)
     description = models.TextField(blank=True)
@@ -73,33 +74,33 @@ class Card(models.Model):
             except Exception as e:
                 print(f"Error creating notification: {e}")
 
-class CardChecklist(models.Model):
+class CardChecklist(TenantModel):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='checklists')
     title = models.CharField(max_length=255)
     is_completed = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
-class CardSubtask(models.Model):
+class CardSubtask(TenantModel):
     parent_card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='subtasks')
     title = models.CharField(max_length=255)
     status = models.CharField(max_length=50, default='pending')
     assignee = models.ForeignKey(User, on_delete=models.SET_NULL, null=True, blank=True, related_name='assigned_subtasks')
     created_at = models.DateTimeField(auto_now_add=True)
 
-class CardComment(models.Model):
+class CardComment(TenantModel):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='comments')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     text = models.TextField()
     created_at = models.DateTimeField(auto_now_add=True)
 
-class CardAttachment(models.Model):
+class CardAttachment(TenantModel):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='attachments')
     file = models.FileField(upload_to='board_attachments/')
     file_name = models.CharField(max_length=255, blank=True)
     uploaded_by = models.ForeignKey(User, on_delete=models.SET_NULL, null=True)
     uploaded_at = models.DateTimeField(auto_now_add=True)
 
-class CardChat(models.Model):
+class CardChat(TenantModel):
     card = models.ForeignKey(Card, on_delete=models.CASCADE, related_name='chats')
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     text = models.TextField()
