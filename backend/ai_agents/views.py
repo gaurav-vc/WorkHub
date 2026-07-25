@@ -11,6 +11,9 @@ import traceback
 class AIAgentViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     queryset = AIAgent.objects.all()
+
+    def get_queryset(self):
+        return AIAgent.objects.all()
     
     @action(detail=False, methods=['post'])
     def invoke(self, request):

@@ -8,6 +8,11 @@ from .serializers import PolicySerializer
 
 class PolicyViewSet(TenantModelViewSet):
     queryset = Policy.objects.all().order_by('-updated_at')
+
+
+    def get_queryset(self):
+
+        return Policy.objects.all().order_by('-updated_at')
     serializer_class = PolicySerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     permission_classes = [IsAuthenticated, RBACPermission]

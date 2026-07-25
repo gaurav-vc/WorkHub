@@ -17,6 +17,9 @@ User = get_user_model()
 class TemplateCategoryViewSet(viewsets.ModelViewSet):
     """API endpoint for Template Categories."""
     queryset = TemplateCategory.objects.filter(is_active=True)
+
+    def get_queryset(self):
+        return TemplateCategory.objects.filter(is_active=True)
     serializer_class = TemplateCategorySerializer
     # 1. Unlock the categories
     permission_classes = [AllowAny] 
@@ -26,6 +29,9 @@ class TemplateCategoryViewSet(viewsets.ModelViewSet):
 class TemplateViewSet(viewsets.ModelViewSet):
     """API endpoint for Templates in the Marketplace."""
     queryset = Template.objects.filter(is_public=True).select_related('category')
+
+    def get_queryset(self):
+        return Template.objects.filter(is_public=True).select_related('category')
     
     # 2. Unlock the templates
     permission_classes = [AllowAny] 

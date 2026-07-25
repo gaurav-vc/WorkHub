@@ -34,11 +34,21 @@ class IsCustomAdminUser(BasePermission):
 
 class RoleViewSet(viewsets.ModelViewSet):
     queryset = Role.objects.all()
+
+
+    def get_queryset(self):
+
+        return Role.objects.all()
     serializer_class = RoleSerializer
 
 
 class OrganizationViewSet(viewsets.ModelViewSet):
     queryset = Organization.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return Organization.objects.all().order_by('-created_at')
     serializer_class = OrganizationSerializer
     permission_classes = (IsAuthenticated,)
 
@@ -93,6 +103,11 @@ class CustomTokenObtainPairView(TokenObtainPairView):
 
 class RegisterView(generics.CreateAPIView):
     queryset = User.objects.all()
+
+
+    def get_queryset(self):
+
+        return User.objects.all()
     permission_classes = (AllowAny,)
 
     def post(self, request, *args, **kwargs):

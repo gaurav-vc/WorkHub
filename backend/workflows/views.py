@@ -8,6 +8,11 @@ from django.contrib.auth import get_user_model
 
 class WorkflowViewSet(viewsets.ModelViewSet):
     queryset = Workflow.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return Workflow.objects.all().order_by('-created_at')
     serializer_class = WorkflowSerializer
 
     @action(detail=True, methods=['post'])
@@ -26,16 +31,36 @@ class WorkflowViewSet(viewsets.ModelViewSet):
 
 class WorkflowDefinitionViewSet(viewsets.ModelViewSet):
     queryset = WorkflowDefinition.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return WorkflowDefinition.objects.all().order_by('-created_at')
     serializer_class = WorkflowDefinitionSerializer
 
 class WorkflowVersionViewSet(viewsets.ModelViewSet):
     queryset = WorkflowVersion.objects.all().order_by('-published_at')
+
+
+    def get_queryset(self):
+
+        return WorkflowVersion.objects.all().order_by('-published_at')
     serializer_class = WorkflowVersionSerializer
 
 class WorkflowExecutionViewSet(viewsets.ModelViewSet):
     queryset = WorkflowExecution.objects.all().order_by('-started_at')
+
+
+    def get_queryset(self):
+
+        return WorkflowExecution.objects.all().order_by('-started_at')
     serializer_class = WorkflowExecutionSerializer
 
 class ApprovalTaskViewSet(viewsets.ModelViewSet):
     queryset = ApprovalTask.objects.all().order_by('-sla_deadline')
+
+
+    def get_queryset(self):
+
+        return ApprovalTask.objects.all().order_by('-sla_deadline')
     serializer_class = ApprovalTaskSerializer

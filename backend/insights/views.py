@@ -14,6 +14,11 @@ from resources.models import Department
 
 class RiskIndicatorViewSet(viewsets.ModelViewSet):
     queryset = RiskIndicator.objects.all().order_by('id')
+
+
+    def get_queryset(self):
+
+        return RiskIndicator.objects.all().order_by('id')
     serializer_class = RiskIndicatorSerializer
 
 @api_view(['GET'])

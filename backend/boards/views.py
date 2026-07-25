@@ -56,6 +56,11 @@ class BoardViewSet(viewsets.ModelViewSet):
 # Fixed ViewSet names to match your urls.py!
 class ColumnViewSet(viewsets.ModelViewSet):
     queryset = Column.objects.all()
+
+
+    def get_queryset(self):
+
+        return Column.objects.all()
     serializer_class = ColumnSerializer
     permission_classes = [IsAuthenticated]
 

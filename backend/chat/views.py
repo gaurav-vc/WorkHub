@@ -10,6 +10,11 @@ User = get_user_model()
 
 class ChannelViewSet(viewsets.ModelViewSet):
     queryset = Channel.objects.all()
+
+
+    def get_queryset(self):
+
+        return Channel.objects.all()
     serializer_class = ChannelSerializer
     permission_classes = [permissions.IsAuthenticated]
 

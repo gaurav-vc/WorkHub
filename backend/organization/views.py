@@ -21,6 +21,11 @@ class IsSuperAdmin(permissions.BasePermission):
             return False
 class OrganizationViewSet(viewsets.ModelViewSet):
     queryset = Organization.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return Organization.objects.all().order_by('-created_at')
     serializer_class = OrganizationSerializer
     permission_classes = [IsSuperAdmin]
 

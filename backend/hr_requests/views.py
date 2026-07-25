@@ -168,11 +168,19 @@ class HRRequestViewSet(viewsets.ModelViewSet):
 
 class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes = [IsAuthenticated]
-    queryset = User.objects.all()
+    # queryset = User.objects.all() removed to prevent leak
+
+    def get_queryset(self):
+        from core.utils import get_visible_users
+        return get_visible_users(self.request.user)
+
+    def get_queryset(self):
+        return User.objects.all()
 
     @action(detail=False, methods=['get'])
     def summary(self, request):
-        users = User.objects.all()
+        from core.utils import get_visible_users
+        users = get_visible_users(request.user)
         data = []
         for u in users:
             records = AttendanceRecord.objects.filter(user=u).order_by('date')

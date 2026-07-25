@@ -12,26 +12,51 @@ from django.db import transaction
 
 class CourseViewSet(viewsets.ModelViewSet):
     queryset = Course.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return Course.objects.all().order_by('-created_at')
     serializer_class = CourseSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
 class CourseAccessRequestViewSet(viewsets.ModelViewSet):
     queryset = CourseAccessRequest.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return CourseAccessRequest.objects.all().order_by('-created_at')
     serializer_class = CourseAccessRequestSerializer
     filterset_fields = ['course', 'employee_name', 'status']
 
 class CertificateTemplateViewSet(viewsets.ModelViewSet):
     queryset = CertificateTemplate.objects.all().order_by('-created_at')
+
+
+    def get_queryset(self):
+
+        return CertificateTemplate.objects.all().order_by('-created_at')
     serializer_class = CertificateTemplateSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 
 class UploadedVideoViewSet(viewsets.ModelViewSet):
     queryset = UploadedVideo.objects.all().order_by('-uploaded_at')
+
+
+    def get_queryset(self):
+
+        return UploadedVideo.objects.all().order_by('-uploaded_at')
     serializer_class = UploadedVideoSerializer
     parser_classes = (MultiPartParser, FormParser)
 
 class GlobalVideoSettingsViewSet(viewsets.ModelViewSet):
     queryset = GlobalVideoSettings.objects.all()
+
+
+    def get_queryset(self):
+
+        return GlobalVideoSettings.objects.all()
     serializer_class = GlobalVideoSettingsSerializer
 
     def list(self, request, *args, **kwargs):
@@ -41,16 +66,31 @@ class GlobalVideoSettingsViewSet(viewsets.ModelViewSet):
 
 class VideoProgressViewSet(viewsets.ModelViewSet):
     queryset = VideoProgress.objects.all()
+
+
+    def get_queryset(self):
+
+        return VideoProgress.objects.all()
     serializer_class = VideoProgressSerializer
     filterset_fields = ['employee_name', 'course_point']
 
 class CoursePointQuestionViewSet(viewsets.ModelViewSet):
     queryset = CoursePointQuestion.objects.all()
+
+
+    def get_queryset(self):
+
+        return CoursePointQuestion.objects.all()
     serializer_class = CoursePointQuestionSerializer
     filterset_fields = ['course_point']
 
 class QuestionBankViewSet(viewsets.ModelViewSet):
     queryset = QuestionBank.objects.all()
+
+
+    def get_queryset(self):
+
+        return QuestionBank.objects.all()
     serializer_class = QuestionBankSerializer
     filterset_fields = ['course']
 
@@ -93,6 +133,11 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
 
 class AssessmentSessionViewSet(viewsets.ModelViewSet):
     queryset = AssessmentSession.objects.all()
+
+
+    def get_queryset(self):
+
+        return AssessmentSession.objects.all()
     serializer_class = AssessmentSessionSerializer
     filterset_fields = ['employee_name', 'course']
 

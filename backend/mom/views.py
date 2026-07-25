@@ -12,6 +12,11 @@ from .utils import generate_mom_pdf
 
 class MOMViewSet(viewsets.ModelViewSet):
     queryset = MOM.objects.all()
+
+
+    def get_queryset(self):
+
+        return MOM.objects.all()
     serializer_class = MOMSerializer
     permission_classes = [IsAuthenticated]
 
@@ -108,6 +113,11 @@ class MOMViewSet(viewsets.ModelViewSet):
 
 class MOMPointViewSet(viewsets.ModelViewSet):
     queryset = MOMPoint.objects.all()
+
+
+    def get_queryset(self):
+
+        return MOMPoint.objects.all()
     serializer_class = MOMPointSerializer
     permission_classes = [IsAuthenticated]
 

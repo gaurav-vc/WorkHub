@@ -7,6 +7,11 @@ from .serializers import ArticleSerializer
 
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all().order_by('-views')
+
+
+    def get_queryset(self):
+
+        return Article.objects.all().order_by('-views')
     serializer_class = ArticleSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     filter_backends = [filters.SearchFilter]

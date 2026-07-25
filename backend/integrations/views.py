@@ -4,4 +4,9 @@ from .serializers import IntegrationSerializer
 
 class IntegrationViewSet(viewsets.ModelViewSet):
     queryset = Integration.objects.all().order_by('name')
+
+
+    def get_queryset(self):
+
+        return Integration.objects.all().order_by('name')
     serializer_class = IntegrationSerializer

@@ -11,6 +11,11 @@ from django.conf import settings
 
 class EmployeeViewSet(viewsets.ModelViewSet):
     queryset = Employee.objects.all().order_by('name')
+
+
+    def get_queryset(self):
+
+        return Employee.objects.all().order_by('name')
     serializer_class = EmployeeSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 

@@ -16,6 +16,11 @@ User = get_user_model()
 
 class RoleViewSet(TenantModelViewSet):
     queryset = Role.objects.all()
+
+
+    def get_queryset(self):
+
+        return Role.objects.all()
     serializer_class = RoleSerializer
     permission_classes = [IsAuthenticated]
 
@@ -259,6 +264,11 @@ Team WorkHub
 
 class RoleAccessMappingViewSet(viewsets.ModelViewSet):
     queryset = RoleAccessMapping.objects.all()
+
+
+    def get_queryset(self):
+
+        return RoleAccessMapping.objects.all()
     serializer_class = RoleAccessMappingSerializer
     
     # Add filtering, searching, and ordering backends

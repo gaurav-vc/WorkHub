@@ -4,4 +4,9 @@ from .serializers import BrandSettingSerializer
 
 class BrandSettingViewSet(viewsets.ModelViewSet):
     queryset = BrandSetting.objects.all()
+
+
+    def get_queryset(self):
+
+        return BrandSetting.objects.all()
     serializer_class = BrandSettingSerializer

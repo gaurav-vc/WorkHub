@@ -24,6 +24,9 @@ class KudosViewSet(viewsets.ModelViewSet):
 class BirthdayViewSet(viewsets.ReadOnlyModelViewSet):
     # ReadOnly because Birthdays are usually managed by HR/Admin, not created by users directly
     queryset = Birthday.objects.all()
+
+    def get_queryset(self):
+        return Birthday.objects.all()
     serializer_class = BirthdaySerializer
 
     def list(self, request, *args, **kwargs):
