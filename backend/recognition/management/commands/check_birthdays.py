@@ -91,14 +91,53 @@ class Command(BaseCommand):
                         </html>
                         """
 
-                        send_mail(
+                        from django.core.mail import EmailMultiAlternatives
+                        from email.mime.image import MIMEImage
+                        import os
+                        
+                        email_msg = EmailMultiAlternatives(
                             subject=f"Happy Birthday, {emp.name}! 🎉",
-                            message=f"Happy Birthday {emp.name}!",
-                            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'system@company.local'),
-                            recipient_list=[emp.email],
-                            html_message=html_message,
-                            fail_silently=False,
+                            body=f"Happy Birthday {emp.name}!",
+                            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'Konnect@envisageideas.com'),
+                            to=[emp.email],
                         )
+                        
+                        # Prepare HTML message
+                        html = html_message
+                        
+                        # Attach profile photo inline
+                        if emp.photo:
+                            try:
+                                photo_path = emp.photo.path
+                                if os.path.exists(photo_path):
+                                    with open(photo_path, 'rb') as f:
+                                        img = MIMEImage(f.read())
+                                        img.add_header('Content-ID', '<profile_photo>')
+                                        img.add_header('Content-Disposition', 'inline')
+                                        email_msg.attach(img)
+                                        # Update HTML to use CID
+                                        html = html.replace(photo_url, "cid:profile_photo")
+                            except Exception as e:
+                                self.stdout.write(self.style.WARNING(f"Could not attach inline photo: {e}"))
+                                
+                        # Attach organization logo inline
+                        if emp.organization and emp.organization.logo:
+                            try:
+                                logo_path = emp.organization.logo.path
+                                if os.path.exists(logo_path):
+                                    with open(logo_path, 'rb') as f:
+                                        logo_img = MIMEImage(f.read())
+                                        logo_img.add_header('Content-ID', '<org_logo>')
+                                        logo_img.add_header('Content-Disposition', 'inline')
+                                        email_msg.attach(logo_img)
+                                        # Update HTML to use CID
+                                        html = html.replace(org_logo_url, "cid:org_logo")
+                            except Exception as e:
+                                self.stdout.write(self.style.WARNING(f"Could not attach inline logo: {e}"))
+                                
+                        email_msg.attach_alternative(html, "text/html")
+                        email_msg.send(fail_silently=False)
+                        
                         self.stdout.write(self.style.SUCCESS(f"Successfully sent birthday email to {emp.email}"))
                     except Exception as e:
                         self.stdout.write(self.style.ERROR(f"Failed to send email to {emp.email}: {e}"))

@@ -66,6 +66,19 @@ class SiteSerializer(serializers.ModelSerializer):
         fields = '__all__'
         read_only_fields = ['created_by', 'created_at', 'updated_at']
 
+    def validate_modules_access(self, value):
+        if not isinstance(value, list):
+            return value
+            
+        try:
+            from role_base_access.utils import MODULE_ID_TO_URLS
+            valid_ids = set(MODULE_ID_TO_URLS.keys())
+            # Filter out any ghost/legacy IDs that aren't in the official MODULE_ID_TO_URLS
+            clean_value = [m for m in value if m in valid_ids]
+            return clean_value
+        except ImportError:
+            return value
+
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username

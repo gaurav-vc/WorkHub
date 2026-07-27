@@ -688,7 +688,7 @@ The WorkHub Team
                 email_msg = EmailMultiAlternatives(
                     subject=subject,
                     body=text_body,
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'Konnect@envisageideas.com'),
                     to=[user.email],
                 )
                 email_msg.attach_alternative(html_body, "text/html")
@@ -874,7 +874,7 @@ The WorkHub Team
                 email_msg = EmailMultiAlternatives(
                     subject=subject,
                     body=text_body,
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'gauravkokane420op@gmail.com'),
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'Konnect@envisageideas.com'),
                     to=[user.email],
                 )
                 email_msg.attach_alternative(html_body, "text/html")

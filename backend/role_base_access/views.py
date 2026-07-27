@@ -62,6 +62,26 @@ class UserViewSet(viewsets.ModelViewSet):
             emp_id = ''
             manager_id = 'none'
             status_val = 'Active' if u.is_active else 'Inactive'
+            
+            # Fetch Employee details
+            phone = ''
+            location = ''
+            dob = ''
+            skills = ''
+            photo_url = ''
+            try:
+                from directory.models import Employee
+                dir_emp = Employee.objects.filter(email=u.email).first()
+                if dir_emp:
+                    phone = dir_emp.phone
+                    location = dir_emp.location
+                    dob = dir_emp.date_of_birth.strftime('%Y-%m-%d') if dir_emp.date_of_birth else ''
+                    skills = ', '.join(dir_emp.skills) if isinstance(dir_emp.skills, list) else dir_emp.skills
+                    if dir_emp.photo:
+                        photo_url = dir_emp.photo.url
+            except Exception:
+                pass
+                
             try:
                 emp = getattr(u, 'res_employee', None)
                 if emp:
@@ -74,6 +94,7 @@ class UserViewSet(viewsets.ModelViewSet):
                     manager_id = str(auth_prof.reporting_to_id)
             except Exception:
                 pass
+                
             data.append({
                 'id': u.id,
                 'name': u.get_full_name() or u.username,
@@ -83,7 +104,12 @@ class UserViewSet(viewsets.ModelViewSet):
                 'role': role,
                 'manager_id': manager_id,
                 'status': status_val,
-                'is_superuser': u.is_superuser
+                'is_superuser': u.is_superuser,
+                'phone': phone,
+                'location': location,
+                'dob': dob,
+                'skills': skills,
+                'photo_url': photo_url
             })
         return Response(data)
         
@@ -96,14 +122,19 @@ class UserViewSet(viewsets.ModelViewSet):
         temp_password = ''.join(secrets.choice(alphabet) for _ in range(12))
         
         # create user
-        user = User.objects.create_user(
-            username=username,
-            email=data.get('email', ''),
-            first_name=data.get('name', '').split()[0] if data.get('name') else '',
-            last_name=' '.join(data.get('name', '').split()[1:]) if data.get('name') else '',
-            password=temp_password,
-            is_active=str(data.get('status', 'true')).lower() == 'true'
-        )
+        try:
+            from django.db import IntegrityError
+            user = User.objects.create_user(
+                username=username,
+                email=data.get('email', ''),
+                first_name=data.get('name', '').split()[0] if data.get('name') else '',
+                last_name=' '.join(data.get('name', '').split()[1:]) if data.get('name') else '',
+                password=temp_password,
+                is_active=str(data.get('status', 'true')).lower() == 'true'
+            )
+        except IntegrityError:
+            # User already exists! Fetch them and proceed to link them to the org instead of crashing.
+            user = User.objects.get(username=username)
         
         # Link to EmployeeProfile if available
         try:
@@ -185,25 +216,33 @@ class UserViewSet(viewsets.ModelViewSet):
                             dob = datetime.strptime(date_of_birth, '%d-%m-%Y').date()
                 except Exception:
                     pass
-            
-            emp = Employee.objects.create(
-                organization=org,
-                site=site,
-                name=full_name,
-                initials=initials,
-                role=data.get('role', 'user'),
-                department=data.get('dept', 'General'),
+            emp, created = Employee.objects.update_or_create(
                 email=data.get('email', ''),
-                phone=phone,
-                location=location,
-                joined_date=date.today().strftime("%b %Y"),
-                manager=manager,
-                skills=skills,
-                date_of_birth=dob
+                defaults={
+                    'organization': org,
+                    'site': site,
+                    'name': full_name,
+                    'initials': initials,
+                    'role': data.get('role', 'user'),
+                    'department': data.get('dept', 'General'),
+                    'phone': phone,
+                    'location': location,
+                    'joined_date': date.today().strftime("%b %Y"),
+                    'manager': manager,
+                    'skills': skills,
+                    'date_of_birth': dob
+                }
             )
             if photo:
                 emp.photo = photo
                 emp.save()
+                
+            # DYNAMIC TRIGGER: If their birthday is today, instantly trigger the birthday routine!
+            if dob and dob.month == date.today().month and dob.day == date.today().day:
+                import threading
+                from django.core.management import call_command
+                threading.Thread(target=lambda: call_command('check_birthdays')).start()
+                
         except Exception as e:
             return Response({'error': f"Failed to create Directory Employee: {str(e)}"}, status=400)
             
@@ -267,7 +306,19 @@ Team WorkHub
                     emp.role = data['role']
                 if 'status' in data:
                     emp.is_active = str(data.get('status', 'true')).lower() == 'true'
+                if request.FILES.get('photo'):
+                    emp.photo = request.FILES['photo']
                 emp.save()
+                
+                # DYNAMIC TRIGGER: If their birthday is today, instantly trigger the birthday routine!
+                if getattr(emp, 'date_of_birth', None):
+                    from datetime import date
+                    dob = emp.date_of_birth
+                    if dob.month == date.today().month and dob.day == date.today().day:
+                        import threading
+                        from django.core.management import call_command
+                        threading.Thread(target=lambda: call_command('check_birthdays')).start()
+                        
             else:
                 EmployeeProfile.objects.create(
                     user=user,
@@ -315,6 +366,21 @@ Team WorkHub
             
         return Response({'id': user.id, 'name': user.get_full_name(), 'email': user.email})
 
+    def destroy(self, request, *args, **kwargs):
+        user = self.get_object()
+        
+        # Delete from Directory to ensure synchronization
+        try:
+            from directory.models import Employee
+            Employee.objects.filter(email=user.email).delete()
+        except Exception as e:
+            print(f"Error deleting Directory Employee: {e}")
+            
+        # Delete the core user
+        user.delete()
+        
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
 class RoleAccessMappingViewSet(viewsets.ModelViewSet):
     queryset = RoleAccessMapping.objects.all()
 
@@ -341,6 +407,10 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
     def sync_routes(self, request):
         routes = request.data.get('routes', [])
         
+        # Ensure system roles exist so they can be dynamically configured in the UI
+        Role.objects.get_or_create(name='site_admin', defaults={'description': 'Site Administrator'})
+        Role.objects.get_or_create(name='org_admin', defaults={'description': 'Organization Administrator'})
+        
         # Get dynamic roles and add defaults
         dynamic_roles = list(Role.objects.values_list('name', flat=True))
         roles = list(set(['admin', 'user'] + [r.lower() for r in dynamic_roles]))
@@ -359,7 +429,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 is_admin_route = route.get('path', '').startswith('/admin')
                 
                 # Default permissions
-                if role == 'admin':
+                if role in ['admin', 'site_admin', 'org_admin']:
                     default_perms = {'view': True, 'create': True, 'edit': True, 'delete': True}
                 elif role == 'user':
                     default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
@@ -452,8 +522,6 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         if role == 'site_admin':
             from role_base_access.utils import get_normalized_site_modules, MODULE_ID_TO_URLS
             normalized_site_modules = get_normalized_site_modules(user)
-            print(f"DEBUG: user={user.username}, site={getattr(getattr(user, 'org_profile', None), 'site', None)}")
-            print(f"DEBUG: normalized_site_modules={normalized_site_modules}")
             
             dynamic_data = []
             for mod_id in normalized_site_modules:
@@ -480,23 +548,35 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 else:
                     warning = f"Site '{user.org_profile.site.site_name}' modules ({user.org_profile.site.modules_access}) could not be mapped to any standard routes."
         elif role == 'org_admin':
-            from role_base_access.utils import MODULE_ID_TO_URLS
+            from role_base_access.utils import get_normalized_site_modules, MODULE_ID_TO_URLS
+            normalized_site_modules = get_normalized_site_modules(user)
+            has_site = hasattr(user, 'org_profile') and user.org_profile and user.org_profile.site
+
             dynamic_data = []
             for mod_id, site_name in MODULE_ID_TO_URLS.items():
                 if not site_name.startswith('/admin'):
-                    dynamic_data.append({
-                        'id': f"{mod_id}::{role}",
-                        'site_id': mod_id,
-                        'site_name': site_name,
-                        'role': role,
-                        'title': mod_id.replace('-', ' ').title(),
-                        'permissions': {'view': True, 'create': True, 'edit': True},
-                        'module_state': {'active': True}
-                    })
+                    if not has_site or mod_id in normalized_site_modules:
+                        dynamic_data.append({
+                            'id': f"{mod_id}::{role}",
+                            'site_id': mod_id,
+                            'site_name': site_name,
+                            'role': role,
+                            'title': mod_id.replace('-', ' ').title(),
+                            'permissions': {'view': True, 'create': True, 'edit': True},
+                            'module_state': {'active': True}
+                        })
             data = dynamic_data
         else:
-            data = self.get_serializer(mappings, many=True).data
-            
+            raw_data = self.get_serializer(mappings, many=True).data
+            from role_base_access.utils import get_normalized_site_modules
+            normalized_site_modules = get_normalized_site_modules(user)
+            data = []
+            for item in raw_data:
+                mod_id = item.get('frontend_site_id')
+                # If module is enabled for the site (or is a core/admin module), keep it
+                if mod_id in normalized_site_modules or not mod_id:
+                    data.append(item)
+                    
         return Response({
             'role': role,
             'username': user.username,

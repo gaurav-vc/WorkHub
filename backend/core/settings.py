@@ -214,8 +214,8 @@ EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
 EMAIL_USE_SSL = False
-EMAIL_HOST_USER = 'gauravkokane420op@gmail.com'
-EMAIL_HOST_PASSWORD = 'qflzblppohrqrhie'
+EMAIL_HOST_USER = 'Konnect@envisageideas.com'
+EMAIL_HOST_PASSWORD = 'atyp awcg zdfn ldov'
 DEFAULT_FROM_EMAIL = f'WorkHub <{EMAIL_HOST_USER}>'
 
 # Frontend URL (used in emails)
