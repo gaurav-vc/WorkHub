@@ -479,9 +479,10 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         # Site prefix for unique mapping ID per tenant
         user = request.user
         try:
-            site = user.org_profile.site
+            org_profile = getattr(user, 'org_profile', None)
+            site = org_profile.site if org_profile else None
             site_prefix = f"{site.id}::" if site else ""
-        except AttributeError:
+        except Exception:
             site_prefix = ""
         
         for route in routes:
@@ -507,8 +508,8 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                         'title': route.get('title', route['id']),
                         'permissions': default_perms, 
                         'module_state': {'active': True},
-                        'organization': user.org_profile.organization if hasattr(user, 'org_profile') else None,
-                        'site': user.org_profile.site if hasattr(user, 'org_profile') else None,
+                        'organization': getattr(user, 'org_profile').organization if getattr(user, 'org_profile', None) else None,
+                        'site': getattr(user, 'org_profile').site if getattr(user, 'org_profile', None) else None,
                     }
                 )
                 
