@@ -64,7 +64,24 @@ def dashboard(request):
             "due_date": t.due_date.isoformat() if t.due_date else None,
         })
 
+    # ── Merge Boards Cards ───────────────────────────────────────────────────
+    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:20]
+    for c in cards_qs:
+        proj_name = "My Boards"
+        if getattr(c, 'column', None) and getattr(c.column, 'board', None):
+            proj_name = f"Board: {c.column.board.title}"
+            
+        today_tasks_data.append({
+            "id": f"board_card_{c.id}",
+            "title": c.title,
+            "priority": getattr(c, 'priority', "P3") or "P3",
+            "status": c.status or "pending",
+            "project": proj_name,
+            "due_date": c.due_date.isoformat() if c.due_date else None,
+        })
+
     pending_tasks_count = Task.objects.filter(assigned_to=user, status__in=['pending', 'in_progress']).count()
+    pending_tasks_count += Card.objects.filter(assignee=user).exclude(status__iexact='done').count()
 
     # ── Meetings: only meetings the current user is part of ──────────────────
     # Do NOT include meetings by other visible_users — that leaks data.

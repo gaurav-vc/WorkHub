@@ -13,8 +13,9 @@ class BoardViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         if self.request.user.is_authenticated:
-            visible_users = get_visible_users(self.request.user)
-            return Board.objects.filter(owner__in=visible_users).order_by('-id')
+            # My Boards should STRICTLY only return boards created by the current user,
+            # even if the user is a Site Admin.
+            return Board.objects.filter(owner=self.request.user).order_by('-id')
         return Board.objects.none()
 
     def perform_create(self, serializer):

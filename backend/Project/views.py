@@ -398,13 +398,71 @@ class TaskViewSet(TenantModelViewSet):
                     global_access = True
                     
         if global_access:
-            return queryset.order_by('-created_at')
+            return queryset
             
         from django.db.models import Q
-        return queryset.filter(Q(assigned_to=user) | Q(created_by=user)).order_by('-created_at')
+        user_dept = ""
+        try:
+            if profile and profile.role_relationship:
+                user_dept = profile.role_relationship.name
+        except Exception:
+            pass
+            
+        # Users can see tasks if:
+        # 1. They are assigned to it
+        # 2. They created it
+        # 3. They created the parent project
+        # 4. The parent project belongs to their department (or is accessible to 'all')
+        
+        project_scope_q = Q(project__department__in=['all', 'Entire Organization', ''])
+        if user_dept:
+            project_scope_q |= Q(project__department__iexact=user_dept)
 
-    def perform_create(self, serializer):
-        super().perform_create(serializer, created_by=self.request.user)
+        return queryset.filter(
+            Q(assigned_to=user) | 
+            Q(created_by=user) | 
+            Q(project__created_by=user) |
+            project_scope_q
+        ).distinct()
+
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        data = list(serializer.data)
+        
+        # Merge Boards Cards into the Tasks Context
+        user = request.user
+        if user.is_authenticated:
+            from boards.models import Card
+            from django.db.models import Q
+            cards = Card.objects.filter(Q(assignee=user) | Q(created_by=user)).select_related('column__board', 'assignee', 'created_by')
+            for c in cards:
+                card_data = {
+                    "id": f"board_card_{c.id}",
+                    "title": c.title,
+                    "description": c.description,
+                    "status": c.status,
+                    "priority": c.priority or "P3",
+                    "due_date": c.due_date.isoformat() if c.due_date else None,
+                    "created_at": c.created_at.isoformat() if c.created_at else None,
+                    "project": f"Board: {c.column.board.title}" if getattr(c, 'column', None) and getattr(c.column, 'board', None) else "Board Task",
+                    "project_id": getattr(c.column.board, 'id', None) if getattr(c, 'column', None) else None,
+                    "task_type": "board",
+                    "assignee_detail": {
+                        "id": c.assignee.id, "name": c.assignee.get_full_name() or c.assignee.username, "email": c.assignee.email
+                    } if c.assignee else None,
+                    "created_by_name": c.created_by.get_full_name() or c.created_by.username if c.created_by else "System",
+                    "comments": [], "attachments": [], "subtasks": [], "blocked_by": [], "checklists": [], "chats": []
+                }
+                data.append(card_data)
+                
+        return Response(data)
 
     def create(self, request, *args, **kwargs):
         org = self.get_organization()
