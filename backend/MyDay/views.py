@@ -50,20 +50,21 @@ def dashboard(request):
     visible_users = get_visible_users(user)
 
     # ── Tasks: only the current user's assigned tasks ────────────────────────
-    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:50]
+    from Project.models import Task
+    tasks_qs = Task.objects.filter(assigned_to=user).select_related('project').order_by('-created_at')[:50]
 
     today_tasks_data = []
-    for c in cards_qs:
+    for t in tasks_qs:
         today_tasks_data.append({
-            "id": c.id,
-            "title": c.title,
-            "priority": c.priority or "P3",
-            "status": c.status or "pending",
-            "project": c.column.board.title if c.column and c.column.board else "My Board",
-            "due_date": c.due_date.isoformat() if c.due_date else None,
+            "id": t.id,
+            "title": t.title,
+            "priority": getattr(t, 'priority', "P3"),
+            "status": t.status or "pending",
+            "project": t.project.name if t.project else "My Tasks",
+            "due_date": t.due_date.isoformat() if t.due_date else None,
         })
 
-    pending_tasks_count = Card.objects.filter(assignee=user, status__in=['pending', 'in_progress']).count()
+    pending_tasks_count = Task.objects.filter(assigned_to=user, status__in=['pending', 'in_progress']).count()
 
     # ── Meetings: only meetings the current user is part of ──────────────────
     # Do NOT include meetings by other visible_users — that leaks data.

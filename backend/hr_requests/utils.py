@@ -11,9 +11,9 @@ def get_hr_permissions(user):
     except Exception:
         role = 'user'
     
-    mapping = RoleAccessMapping.objects.filter(role=role, site_id='hr-requests').first()
-    if not mapping:
-        mapping = RoleAccessMapping.objects.filter(role='user', site_id='hr-requests').first()
+    mapping = RoleAccessMapping.objects.filter(role=role, frontend_site_id='hr-requests').first()
+    if not mapping and role not in ['admin', 'user']:
+        mapping = RoleAccessMapping.objects.filter(role='user', frontend_site_id='hr-requests').first()
 
     if mapping and isinstance(mapping.permissions, dict):
         for k in ['view', 'create', 'edit']:

@@ -444,6 +444,8 @@ class RemoveFromDepartmentView(APIView):
 class CreateActiveUserView(APIView):
     """Admin endpoint to create a fully active user and optionally assign to department"""
     permission_classes = (IsAuthenticated,)  # Normally IsAdminUser, but using IsAuthenticated based on setup
+    from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
 
     def post(self, request):
         username = request.data.get('username')
@@ -451,6 +453,16 @@ class CreateActiveUserView(APIView):
         password = request.data.get('password')
         full_name = request.data.get('full_name', '')
         department_id = request.data.get('department_id')
+        
+        # New fields for Employee Directory
+        phone = request.data.get('phone', '')
+        location = request.data.get('location', '')
+        date_of_birth = request.data.get('date_of_birth', None)
+        manager = request.data.get('manager', '')
+        skills_raw = request.data.get('skills', '')
+        photo = request.FILES.get('photo', None)
+
+        skills = [s.strip() for s in skills_raw.split(',') if s.strip()] if skills_raw else []
 
         if not username or not password:
             return Response({'error': 'Username and password are required'}, status=status.HTTP_400_BAD_REQUEST)
@@ -483,13 +495,17 @@ class CreateActiveUserView(APIView):
             user.save()
             
             # Link to Auth Role
+            role_name = ""
             if department_id:
                 from role_base_access.models import Role as RBACRole
                 rbac_role = RBACRole.objects.filter(id=department_id).first()
                 if rbac_role:
+                    role_name = rbac_role.name
                     role, _ = Role.objects.get_or_create(name=rbac_role.name)
                 else:
                     role = Role.objects.filter(id=department_id).first()
+                    if role:
+                        role_name = role.name
                     
                 if role:
                     profile, _ = UserProfile.objects.get_or_create(user=user)
@@ -504,9 +520,55 @@ class CreateActiveUserView(APIView):
                 org = request.user.org_profile.organization
             
             org_profile, _ = OrgUserProfile.objects.get_or_create(user=user)
+            site = None
+            if hasattr(request.user, 'org_profile') and request.user.org_profile.site:
+                site = request.user.org_profile.site
+                
             if org:
                 org_profile.organization = org
-                org_profile.save()
+            if site:
+                org_profile.site = site
+            org_profile.save()
+                
+            # Automatically create Directory Employee
+            from directory.models import Employee
+            from datetime import date
+            
+            initials = ''.join(p[0] for p in (full_name or username).split()[:2]).upper()
+            
+            dob = None
+            if date_of_birth:
+                try:
+                    from datetime import datetime
+                    # Parse dd-mm-yyyy or yyyy-mm-dd
+                    if '-' in date_of_birth:
+                        parts = date_of_birth.split('-')
+                        if len(parts[0]) == 4:
+                            dob = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+                        else:
+                            dob = datetime.strptime(date_of_birth, '%d-%m-%Y').date()
+                except Exception:
+                    pass
+            
+            emp = Employee.objects.create(
+                organization=org,
+                site=site,
+                name=full_name or username,
+                initials=initials,
+                role=role_name or 'Employee',
+                department=role_name or 'General',
+                email=email,
+                phone=phone,
+                location=location,
+                joined_date=date.today().strftime("%b %Y"),
+                manager=manager,
+                skills=skills,
+                date_of_birth=dob
+            )
+            
+            if photo:
+                emp.photo = photo
+                emp.save()
 
         # Send Email to the newly created active user
         from django.core.mail import EmailMultiAlternatives

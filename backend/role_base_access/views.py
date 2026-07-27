@@ -13,6 +13,7 @@ from rest_framework import viewsets, status
 from rest_framework.response import Response
 
 User = get_user_model()
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 
 class RoleViewSet(TenantModelViewSet):
     queryset = Role.objects.all()
@@ -27,6 +28,7 @@ class RoleViewSet(TenantModelViewSet):
 class UserViewSet(viewsets.ModelViewSet):
     queryset = User.objects.all()
     permission_classes = [IsAuthenticated]
+    parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def get_queryset(self):
         user = self.request.user
@@ -100,7 +102,7 @@ class UserViewSet(viewsets.ModelViewSet):
             first_name=data.get('name', '').split()[0] if data.get('name') else '',
             last_name=' '.join(data.get('name', '').split()[1:]) if data.get('name') else '',
             password=temp_password,
-            is_active=data.get('status', True)
+            is_active=str(data.get('status', 'true')).lower() == 'true'
         )
         
         # Link to EmployeeProfile if available
@@ -120,7 +122,7 @@ class UserViewSet(viewsets.ModelViewSet):
                 user=user,
                 department=dept,
                 role=role_name,
-                is_active=data.get('status', True)
+                is_active=str(data.get('status', 'true')).lower() == 'true'
             )
         except Exception as e:
             pass
@@ -153,6 +155,57 @@ class UserViewSet(viewsets.ModelViewSet):
             auth_profile.save()
         except Exception as e:
             print(f"Error setting manager in UserViewSet: {e}")
+            
+        # Automatically create Directory Employee
+        try:
+            from directory.models import Employee
+            from datetime import date
+            
+            full_name = data.get('name', username)
+            initials = ''.join(p[0] for p in full_name.split()[:2]).upper() if full_name else '?'
+            
+            phone = data.get('phone', '')
+            location = data.get('location', '')
+            date_of_birth = data.get('date_of_birth', None)
+            manager = data.get('manager', '')
+            skills_raw = data.get('skills', '')
+            photo = request.FILES.get('photo', None)
+
+            skills = [s.strip() for s in skills_raw.split(',') if s.strip()] if skills_raw else []
+
+            dob = None
+            if date_of_birth:
+                try:
+                    from datetime import datetime
+                    if '-' in date_of_birth:
+                        parts = date_of_birth.split('-')
+                        if len(parts[0]) == 4:
+                            dob = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+                        else:
+                            dob = datetime.strptime(date_of_birth, '%d-%m-%Y').date()
+                except Exception:
+                    pass
+            
+            emp = Employee.objects.create(
+                organization=org,
+                site=site,
+                name=full_name,
+                initials=initials,
+                role=data.get('role', 'user'),
+                department=data.get('dept', 'General'),
+                email=data.get('email', ''),
+                phone=phone,
+                location=location,
+                joined_date=date.today().strftime("%b %Y"),
+                manager=manager,
+                skills=skills,
+                date_of_birth=dob
+            )
+            if photo:
+                emp.photo = photo
+                emp.save()
+        except Exception as e:
+            return Response({'error': f"Failed to create Directory Employee: {str(e)}"}, status=400)
             
         # Send Email
         from django.core.mail import send_mail
@@ -197,7 +250,7 @@ Team WorkHub
         if 'email' in data:
             user.email = data['email']
         if 'status' in data:
-            user.is_active = data['status']
+            user.is_active = str(data.get('status', 'true')).lower() == 'true'
         user.save()
         
         try:
@@ -213,14 +266,14 @@ Team WorkHub
                 if 'role' in data:
                     emp.role = data['role']
                 if 'status' in data:
-                    emp.is_active = data['status']
+                    emp.is_active = str(data.get('status', 'true')).lower() == 'true'
                 emp.save()
             else:
                 EmployeeProfile.objects.create(
                     user=user,
                     department=dept,
                     role=data.get('role', 'DEV'),
-                    is_active=data.get('status', True)
+                    is_active=str(data.get('status', 'true')).lower() == 'true'
                 )
         except Exception:
             pass
@@ -292,9 +345,17 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         dynamic_roles = list(Role.objects.values_list('name', flat=True))
         roles = list(set(['admin', 'user'] + [r.lower() for r in dynamic_roles]))
         
+        # Site prefix for unique mapping ID per tenant
+        user = request.user
+        try:
+            site = user.org_profile.site
+            site_prefix = f"{site.id}::" if site else ""
+        except AttributeError:
+            site_prefix = ""
+        
         for route in routes:
             for role in roles:
-                mapping_id = f"{route['id']}::{role}"
+                mapping_id = f"{site_prefix}{route['id']}::{role}"
                 is_admin_route = route.get('path', '').startswith('/admin')
                 
                 # Default permissions
@@ -306,15 +367,17 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                     # For all custom roles, default to False so the Admin must explicitly set boundaries
                     default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
                 
-                obj, created = RoleAccessMapping.objects.get_or_create(
+                obj, created = RoleAccessMapping.all_objects.get_or_create(
                     id=mapping_id,
                     defaults={
-                        'site_id': route['id'],
+                        'frontend_site_id': route['id'],
                         'site_name': route.get('path', ''),
                         'role': role,
                         'title': route.get('title', route['id']),
                         'permissions': default_perms, 
-                        'module_state': {'active': True}
+                        'module_state': {'active': True},
+                        'organization': user.org_profile.organization if hasattr(user, 'org_profile') else None,
+                        'site': user.org_profile.site if hasattr(user, 'org_profile') else None,
                     }
                 )
                 
@@ -370,6 +433,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 
         org_name = None
         site_name = None
+        site_modules = []
         try:
             org_profile = getattr(user, 'org_profile', None)
             if org_profile:
@@ -377,46 +441,55 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                     org_name = org_profile.organization.name
                 if org_profile.site:
                     site_name = org_profile.site.name
+                    if org_profile.site.modules_access:
+                        site_modules = org_profile.site.modules_access
         except Exception:
             pass
                 
         mappings = RoleAccessMapping.objects.filter(role=role)
             
-        with open('debug_my_access.txt', 'a') as f:
-            f.write(f"User: {user.username}, Evaluated Role: {role}, Evaluated UserType: {user_type}, MappingCount: {mappings.count()}\n")
-            
+        warning = None
         if role == 'site_admin':
-            master_routes = {}
-            for rm in RoleAccessMapping.objects.all():
-                master_routes[rm.site_id] = {'site_name': rm.site_name, 'title': rm.title}
+            from role_base_access.utils import get_normalized_site_modules, MODULE_ID_TO_URLS
+            normalized_site_modules = get_normalized_site_modules(user)
+            print(f"DEBUG: user={user.username}, site={getattr(getattr(user, 'org_profile', None), 'site', None)}")
+            print(f"DEBUG: normalized_site_modules={normalized_site_modules}")
             
             dynamic_data = []
-            for mod_id, route_info in master_routes.items():
-                if not route_info['site_name'].startswith('/admin'):
+            for mod_id in normalized_site_modules:
+                site_name = MODULE_ID_TO_URLS.get(mod_id, f"/{mod_id}")
+                if not site_name.startswith('/admin'):
                     dynamic_data.append({
                         'id': f"{mod_id}::{role}",
                         'site_id': mod_id,
-                        'site_name': route_info['site_name'],
+                        'site_name': site_name,
                         'role': role,
-                        'title': route_info['title'],
+                        'title': mod_id.replace('-', ' ').title(),
                         'permissions': {'view': True, 'create': True, 'edit': True},
                         'module_state': {'active': True}
                     })
             data = dynamic_data
+            if len(data) == 0:
+                # Calculate root cause for popup
+                if not hasattr(user, 'org_profile') or not user.org_profile:
+                    warning = "Site Admin has no organization profile linked. Please ask Super Admin to assign you to a Site."
+                elif not user.org_profile.site:
+                    warning = "Site Admin is not assigned to any specific Site. Please ask Super Admin to link your profile to a Site."
+                elif not user.org_profile.site.modules_access:
+                    warning = f"Site '{user.org_profile.site.site_name}' has no modules enabled. Please edit the site and assign modules."
+                else:
+                    warning = f"Site '{user.org_profile.site.site_name}' modules ({user.org_profile.site.modules_access}) could not be mapped to any standard routes."
         elif role == 'org_admin':
-            master_routes = {}
-            for rm in RoleAccessMapping.objects.all():
-                master_routes[rm.site_id] = {'site_name': rm.site_name, 'title': rm.title}
-                
+            from role_base_access.utils import MODULE_ID_TO_URLS
             dynamic_data = []
-            for mod_id, route_info in master_routes.items():
-                if not route_info['site_name'].startswith('/admin'):
+            for mod_id, site_name in MODULE_ID_TO_URLS.items():
+                if not site_name.startswith('/admin'):
                     dynamic_data.append({
                         'id': f"{mod_id}::{role}",
                         'site_id': mod_id,
-                        'site_name': route_info['site_name'],
+                        'site_name': site_name,
                         'role': role,
-                        'title': route_info['title'],
+                        'title': mod_id.replace('-', ' ').title(),
                         'permissions': {'view': True, 'create': True, 'edit': True},
                         'module_state': {'active': True}
                     })
@@ -431,7 +504,8 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
             'user_type': user_type,
             'org_name': org_name,
             'site_name': site_name,
-            'access': data
+            'access': data,
+            'warning': warning
         })
 
 class FeatureAccessRequestViewSet(viewsets.ModelViewSet):

@@ -9,8 +9,8 @@ class Organization(models.Model):
     description = models.TextField(blank=True, null=True)
     status = models.CharField(max_length=50, default='active', choices=[('active', 'Active'), ('inactive', 'Inactive')])
     contact_details = models.JSONField(default=dict, blank=True)
-    
     # Company Details
+    logo = models.ImageField(upload_to='org_logos/', blank=True, null=True)
     company_name = models.CharField(max_length=255, blank=True, null=True)
     entity = models.CharField(max_length=255, blank=True, null=True)
     site_location = models.CharField(max_length=255, blank=True, null=True)

@@ -26,12 +26,25 @@ def require_rbac_permission(module_name):
             try:
                 profile = getattr(user, 'auth_profile', None)
                 if profile:
-                    if profile.user_type in ['super_user', 'site_admin']:
+                    if profile.user_type == 'super_user':
                         return view_func(request, *args, **kwargs)
+                    if profile.user_type == 'site_admin':
+                        from role_base_access.utils import is_site_admin_allowed_module
+                        if is_site_admin_allowed_module(user, module_name):
+                            return view_func(request, *args, **kwargs)
+                        else:
+                            return Response({"error": f"Site admin does not have access to module {module_name}."}, status=403)
+                            
                     if profile.role_relationship:
                         role = profile.role_relationship.name.lower()
-                        if role in ['site_admin', 'super_user']:
+                        if role == 'super_user':
                             return view_func(request, *args, **kwargs)
+                        if role in ['site_admin', 'site admin']:
+                            from role_base_access.utils import is_site_admin_allowed_module
+                            if is_site_admin_allowed_module(user, module_name):
+                                return view_func(request, *args, **kwargs)
+                            else:
+                                return Response({"error": f"Site admin does not have access to module {module_name}."}, status=403)
                         
                 if role == 'user':
                     emp_profile = getattr(user, 'res_employee', None)
@@ -40,9 +53,10 @@ def require_rbac_permission(module_name):
             except Exception:
                 pass
 
-            mapping = RoleAccessMapping.objects.filter(role=role, site_id=module_name).first()
+            mapping = RoleAccessMapping.objects.filter(role=role, frontend_site_id=module_name).first()
+        
             if not mapping and role not in ['admin', 'user']:
-                mapping = RoleAccessMapping.objects.filter(role='user', site_id=module_name).first()
+                mapping = RoleAccessMapping.objects.filter(role='user', frontend_site_id=module_name).first()
                 
             if not mapping:
                 return Response({"error": f"No access mapping found for module {module_name}."}, status=403)
@@ -92,11 +106,21 @@ class RBACPermission(permissions.BasePermission):
         try:
             profile = getattr(user, 'auth_profile', None)
             if profile:
-                if profile.user_type in ['super_user', 'site_admin']:
+                if profile.user_type == 'super_user':
+                    return True
+                if profile.user_type == 'site_admin':
+                    from role_base_access.utils import is_site_admin_allowed_module
+                    if not is_site_admin_allowed_module(user, module_name):
+                        return False
                     return True
                 if profile.role_relationship:
                     role = profile.role_relationship.name.lower()
-                    if role in ['site_admin', 'super_user']:
+                    if role == 'super_user':
+                        return True
+                    if role in ['site_admin', 'site admin']:
+                        from role_base_access.utils import is_site_admin_allowed_module
+                        if not is_site_admin_allowed_module(user, module_name):
+                            return False
                         return True
                     
             if role == 'user':
@@ -106,10 +130,10 @@ class RBACPermission(permissions.BasePermission):
         except Exception:
             pass
 
-        mapping = RoleAccessMapping.objects.filter(role=role, site_id=module_name).first()
+        mapping = RoleAccessMapping.objects.filter(role=role, frontend_site_id=module_name).first()
         if not mapping and role not in ['admin', 'user']:
             # Fallback to base 'user' role
-            mapping = RoleAccessMapping.objects.filter(role='user', site_id=module_name).first()
+            mapping = RoleAccessMapping.objects.filter(role='user', frontend_site_id=module_name).first()
             
         if not mapping:
             return False

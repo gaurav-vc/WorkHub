@@ -17,8 +17,15 @@ class RBACEnforcementMiddleware:
         try:
             profile = getattr(request.user, 'auth_profile', None)
             if profile:
-                if profile.user_type in ['super_user', 'site_admin']:
+                if profile.user_type == 'super_user':
                     return self.get_response(request)
+                if profile.user_type == 'site_admin':
+                    from role_base_access.utils import is_site_admin_allowed_module
+                    if is_site_admin_allowed_module(request.user, module_id):
+                        return self.get_response(request)
+                    else:
+                        return JsonResponse({"error": f"Site admin does not have access to module {module_id}."}, status=403)
+                
                 if profile.role_relationship:
                     role = profile.role_relationship.name.lower()
                     
@@ -29,14 +36,21 @@ class RBACEnforcementMiddleware:
         except Exception:
             pass
 
-        if role in ['admin', 'site admin']:
+        if role == 'admin':
             return self.get_response(request)
+            
+        if role in ['site admin', 'site_admin']:
+            from role_base_access.utils import is_site_admin_allowed_module
+            if is_site_admin_allowed_module(request.user, module_id):
+                return self.get_response(request)
+            else:
+                return JsonResponse({"error": f"Site admin does not have access to module {module_id}."}, status=403)
 
         # Look up by site_id which matches the frontend route id (e.g. 'tasks-projects')
-        mapping = RoleAccessMapping.objects.filter(role=role, site_id=module_id).first()
+        mapping = RoleAccessMapping.objects.filter(role=role, frontend_site_id=module_id).first()
         if not mapping and role not in ['admin', 'user']:
             # Fallback to base 'user' role mapping if custom role mapping is missing
-            mapping = RoleAccessMapping.objects.filter(role='user', site_id=module_id).first()
+            mapping = RoleAccessMapping.objects.filter(role='user', frontend_site_id=module_id).first()
 
         if mapping:
             perms = mapping.permissions or {}

@@ -13,7 +13,7 @@ class RoleAccessMappingSerializer(serializers.ModelSerializer):
         model = RoleAccessMapping
         fields = [
             'id', 
-            'site_id', 
+            'frontend_site_id', 
             'site_name', 
             'role', 
             'title', 
