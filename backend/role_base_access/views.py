@@ -403,13 +403,74 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
     ordering_fields = ['updated_at', 'created_at', 'site_id', 'role']
     ordering = ['-updated_at']
 
+    def list(self, request, *args, **kwargs):
+        queryset = self.filter_queryset(self.get_queryset())
+        role_filter = request.query_params.get('role')
+        
+        # If frontend is asking for a specific role and it has NO mappings yet,
+        # we dynamically auto-generate them based on the Site Admin's available modules!
+        if role_filter and not queryset.exists():
+            from role_base_access.models import Role
+            if Role.objects.filter(name=role_filter).exists():
+                user = request.user
+                from role_base_access.utils import get_normalized_site_modules, MODULE_ID_TO_URLS
+                
+                # Only give the new role access to modules the current Admin actually has!
+                if user.is_superuser or getattr(getattr(user, 'auth_profile', None), 'user_type', None) in ['super_user']:
+                    modules_to_map = MODULE_ID_TO_URLS.keys()
+                else:
+                    modules_to_map = get_normalized_site_modules(user)
+                    
+                site_prefix = f"{user.org_profile.site.id}::" if hasattr(user, 'org_profile') and user.org_profile and user.org_profile.site else ""
+                
+                new_mappings = []
+                for mod_id in modules_to_map:
+                    if mod_id not in MODULE_ID_TO_URLS:
+                        continue
+                        
+                    site_name = MODULE_ID_TO_URLS[mod_id]
+                    if site_name.startswith('/admin'):
+                        continue # Don't map admin config routes to standard roles
+                        
+                    mapping_id = f"{site_prefix}{mod_id}::{role_filter}"
+                    
+                    # By default, new roles have all permissions set to False
+                    default_perms = {'view': False, 'create': False, 'edit': False, 'delete': False}
+                    
+                    obj, created = RoleAccessMapping.all_objects.get_or_create(
+                        id=mapping_id,
+                        defaults={
+                            'frontend_site_id': mod_id,
+                            'site_name': site_name,
+                            'role': role_filter,
+                            'title': mod_id.replace('-', ' ').title(),
+                            'permissions': default_perms, 
+                            'module_state': {'active': True},
+                            'organization': getattr(user, 'org_profile').organization if hasattr(user, 'org_profile') and user.org_profile else None,
+                            'site': getattr(user, 'org_profile').site if hasattr(user, 'org_profile') and user.org_profile else None,
+                        }
+                    )
+                    new_mappings.append(obj)
+                    
+                # Re-fetch now that they are created
+                if new_mappings:
+                    queryset = self.filter_queryset(self.get_queryset())
+
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
     @action(detail=False, methods=['post'])
     def sync_routes(self, request):
         routes = request.data.get('routes', [])
         
         # Ensure system roles exist so they can be dynamically configured in the UI
-        Role.objects.get_or_create(name='site_admin', defaults={'description': 'Site Administrator'})
-        Role.objects.get_or_create(name='org_admin', defaults={'description': 'Organization Administrator'})
+        Role.objects.get_or_create(name='site_admin', defaults={'code': 'SITE_ADMIN'})
+        Role.objects.get_or_create(name='org_admin', defaults={'code': 'ORG_ADMIN'})
         
         # Get dynamic roles and add defaults
         dynamic_roles = list(Role.objects.values_list('name', flat=True))
