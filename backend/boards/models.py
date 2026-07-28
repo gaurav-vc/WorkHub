@@ -60,16 +60,17 @@ class Card(TenantModel):
 
         super().save(*args, **kwargs)
 
-        if newly_assigned_user:
+        if newly_assigned_user and newly_assigned_user != self.created_by:
             try:
                 from workspace.models import Notification
                 from django.db import transaction
                 with transaction.atomic():
                     Notification.objects.create(
+                        user=newly_assigned_user,
                         type="card_assigned",
                         title="Card Assigned",
-                        message=f"@{newly_assigned_user.username} has been assigned to card '{self.title}'",
-                        link="/collaboration"
+                        message=f"You have been assigned to card '{self.title}'",
+                        link="/collaboration/boards"
                     )
             except Exception as e:
                 print(f"Error creating notification: {e}")

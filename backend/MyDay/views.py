@@ -132,11 +132,30 @@ def dashboard(request):
 
     quick_links_qs = QuickLink.objects.filter(user=user)
 
+    # Calculate Unread Messages
+    unread_messages_count = 0
+    try:
+        from chat.models import Channel, Message, UserChannelState
+        user_channels = Channel.objects.filter(members=user)
+        for channel in user_channels:
+            state = UserChannelState.objects.filter(user=user, channel=channel).first()
+            if state:
+                unread_messages_count += Message.objects.filter(
+                    channel=channel, 
+                    timestamp__gt=state.last_read_timestamp
+                ).exclude(user=user).count()
+            else:
+                unread_messages_count += Message.objects.filter(
+                    channel=channel
+                ).exclude(user=user).count()
+    except Exception as e:
+        pass
+
     leave_balance = getattr(getattr(user, 'profile', None), 'leave_balance', 0)
     summary = {
         "tasksDue": pending_tasks_count,
         "leaveBalance": leave_balance,
-        "unreadMessages": 0,
+        "unreadMessages": unread_messages_count,
         "pendingApprovals": len(combined_approvals),
     }
 
@@ -257,6 +276,24 @@ def toggle_task(request, task_id):
         return Response({"message": "Task status updated", "status": card.status})
     except Card.DoesNotExist:
         return Response({"error": "Task not found"}, status=404)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def add_quick_link(request):
+    label = request.data.get('label')
+    url = request.data.get('url')
+    if not label or not url:
+        return Response({"error": "Label and URL are required"}, status=400)
+    
+    # Simple order increment
+    order = QuickLink.objects.filter(user=request.user).count()
+    QuickLink.objects.create(
+        user=request.user,
+        label=label,
+        url=url,
+        order=order
+    )
+    return Response({"message": "Quick link added successfully"})
 
 def get_ai_context_data(user):
     today = timezone.now().date()

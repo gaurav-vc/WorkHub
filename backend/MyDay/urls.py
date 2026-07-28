@@ -14,6 +14,9 @@ urlpatterns = [
     # Catches: /api/myday/tasks/1/toggle/
     path('tasks/<int:task_id>/toggle/', views.toggle_task, name='toggle_task'),
     
+    # Catches: /api/myday/quicklinks/create/
+    path('quicklinks/create/', views.add_quick_link, name='add_quick_link'),
+    
     # Catches: /api/myday/ai-context/
     path('ai-context/', views.ai_context_view, name='ai_context'),
-]
+]
