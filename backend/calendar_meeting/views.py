@@ -348,7 +348,8 @@ def event_delete(request, pk):
 def get_all_employees(request):
     """Returns a list of users/employees for selection lists in administration views."""
     from directory.models import Employee
-    users = User.objects.all().select_related('auth_profile')
+    from core.utils import get_visible_users
+    users = get_visible_users(request.user).select_related('auth_profile')
     user_list = []
     
     # Pre-fetch employees to match by email to get department

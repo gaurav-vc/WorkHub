@@ -4,6 +4,7 @@ from .models import Policy
 class PolicySerializer(serializers.ModelSerializer):
     lastUpdated = serializers.SerializerMethodField()
     created_at_formatted = serializers.SerializerMethodField()
+    content = serializers.CharField(required=False, allow_blank=True)
 
     class Meta:
         model = Policy

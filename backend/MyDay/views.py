@@ -267,12 +267,34 @@ def create_task(request):
 def toggle_task(request, task_id):
     try:
         card = Card.objects.get(id=task_id)
+        old_status = card.status
         new_status = request.data.get('status')
         if new_status:
             card.status = new_status
         else:
             card.status = 'done' if card.status != 'done' else 'pending'
         card.save()
+
+        # Update Points System
+        if old_status != 'done' and card.status == 'done':
+            # Award points
+            from hr_requests.models import LeaderboardEntry
+            user = card.assignee or card.created_by
+            if user:
+                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                entry.points += 10
+                entry.level = (entry.points // 100) + 1
+                entry.save()
+        elif old_status == 'done' and card.status != 'done':
+            # Deduct points
+            from hr_requests.models import LeaderboardEntry
+            user = card.assignee or card.created_by
+            if user:
+                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                entry.points = max(0, entry.points - 10)
+                entry.level = (entry.points // 100) + 1
+                entry.save()
+
         return Response({"message": "Task status updated", "status": card.status})
     except Card.DoesNotExist:
         return Response({"error": "Task not found"}, status=404)

@@ -477,6 +477,10 @@ class TaskViewSet(TenantModelViewSet):
             data['due_time'] = data.get('dueTime')
         if data.get('dependentTask') and data.get('dependentTask') != "null":
             data['dependency'] = data.get('dependentTask')
+        if data.get('estimatedEffort') is not None:
+            data['estimated_effort'] = data.get('estimatedEffort')
+        if data.get('effortUnit'):
+            data['effort_unit'] = data.get('effortUnit')
             
         # Provide default due_date as model requires it
         if not data.get('due_date'):
@@ -587,6 +591,10 @@ class TaskViewSet(TenantModelViewSet):
             data['due_date'] = data.get('dueDate')
         if data.get('dueTime'):
             data['due_time'] = data.get('dueTime')
+        if data.get('estimatedEffort') is not None:
+            data['estimated_effort'] = data.get('estimatedEffort')
+        if data.get('effortUnit'):
+            data['effort_unit'] = data.get('effortUnit')
             
         assignees = data.get('assigneeIds', [])
         if isinstance(assignees, str):
@@ -605,9 +613,34 @@ class TaskViewSet(TenantModelViewSet):
         elif data.get('assignedTo') and data.get('assignedTo') != "null":
             data['assigned_to'] = data.get('assignedTo')
             
+        old_status = instance.status
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+
+        # Reload instance to get new status
+        instance.refresh_from_db()
+        
+        # Update Points System
+        done_statuses = ['done', 'completed']
+        if old_status not in done_statuses and instance.status in done_statuses:
+            # Award points
+            from hr_requests.models import LeaderboardEntry
+            user = instance.assigned_to or instance.created_by
+            if user:
+                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                entry.points += 10
+                entry.level = (entry.points // 100) + 1
+                entry.save()
+        elif old_status in done_statuses and instance.status not in done_statuses:
+            # Deduct points
+            from hr_requests.models import LeaderboardEntry
+            user = instance.assigned_to or instance.created_by
+            if user:
+                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                entry.points = max(0, entry.points - 10)
+                entry.level = (entry.points // 100) + 1
+                entry.save()
 
         from .models import Task, TaskChecklist
         

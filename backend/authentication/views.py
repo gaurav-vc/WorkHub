@@ -133,12 +133,21 @@ class RegisterView(generics.CreateAPIView):
             
             # Notify admins
             admins = User.objects.filter(is_superuser=True)
-            if admins.exists():
-                Notification.objects.create(
-                    title="New User Registration",
-                    message=f"User {username} ({email}) has registered and is pending approval.",
-                    type="alert"
-                )
+            from organization.models import Organization
+            fallback_org = Organization.objects.first()
+            for admin in admins:
+                try:
+                    org = admin.org_profile.organization if hasattr(admin, 'org_profile') else fallback_org
+                except Exception:
+                    org = fallback_org
+                if org or not fallback_org: # If no orgs exist at all, we can pass without it
+                    Notification.objects.create(
+                        title="New User Registration",
+                        message=f"User {username} ({email}) has registered and is pending approval.",
+                        type="alert",
+                        organization=org,
+                        user=admin
+                    )
 
         return Response({'message': 'User registered successfully and is pending admin approval.'}, status=status.HTTP_201_CREATED)
 
@@ -275,19 +284,38 @@ class ApproveUserView(APIView):
                 except Exception:
                     pass  # Skip silently if resources app unavailable
             
-            # Link to Organization
+            # Link to Organization and Site
             try:
                 from organization.models import UserProfile as OrgUserProfile
                 org = None
-                if hasattr(request.user, 'org_profile') and request.user.org_profile.organization:
+                site = None
+                if hasattr(request.user, 'org_profile'):
                     org = request.user.org_profile.organization
+                    site = request.user.org_profile.site
                 
                 org_profile, _ = OrgUserProfile.objects.get_or_create(user=user)
                 if org:
                     org_profile.organization = org
-                    org_profile.save()
+                if site:
+                    org_profile.site = site
+                org_profile.save()
             except Exception as e:
-                print(f"Error assigning organization: {e}")
+                print(f"Error assigning organization/site: {e}")
+                
+            # Send Approval Email
+            try:
+                from django.core.mail import send_mail
+                from django.conf import settings
+                login_url = "http://localhost:8080/login"  # Change this to your production frontend URL later
+                send_mail(
+                    'Account Approved',
+                    f'Hello {user.username},\n\nYour account has been approved by the administrator!\n\nYou can now log in using your registered email and the password you created during signup.\n\nLogin here: {login_url}',
+                    settings.DEFAULT_FROM_EMAIL,
+                    [user.email],
+                    fail_silently=False,
+                )
+            except Exception as e:
+                print(f"Failed to send approval email: {e}")
             
             return Response({'message': f'User {user.username} approved.'})
         elif action == 'decline':

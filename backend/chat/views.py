@@ -34,8 +34,25 @@ class ChannelViewSet(viewsets.ModelViewSet):
         for uid in user_ids:
             try:
                 user = User.objects.get(id=uid)
-                channel.members.add(user)
-                users_added.append(user.username)
+                if not channel.members.filter(id=user.id).exists():
+                    channel.members.add(user)
+                    users_added.append(user.username)
+                    
+                    # Create a notification for the added user
+                    from workspace.models import Notification
+                    Notification.objects.create(
+                        user=user,
+                        type='alert',
+                        title="Added to Channel",
+                        message=f"You have been added to #{channel.name}"
+                    )
+                    
+                    # Create a system message in the channel
+                    Message.objects.create(
+                        channel=channel,
+                        user=request.user,  # Using the user who added them
+                        content=f"{user.get_full_name() or user.username} has joined the channel."
+                    )
             except User.DoesNotExist:
                 continue
                 

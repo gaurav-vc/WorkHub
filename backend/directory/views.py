@@ -14,8 +14,20 @@ class EmployeeViewSet(viewsets.ModelViewSet):
 
 
     def get_queryset(self):
-
-        return Employee.objects.all().order_by('name')
+        qs = Employee.objects.all().order_by('name')
+        from core.tenant import get_current_site
+        from core.middleware import get_current_user
+        
+        user = get_current_user()
+        if user:
+            user_type = getattr(getattr(user, 'auth_profile', None), 'user_type', 'employee')
+            if user_type in ['employee', 'site_admin']:
+                site = get_current_site()
+                if site:
+                    qs = qs.filter(site=site)
+                else:
+                    qs = qs.filter(site__isnull=True)
+        return qs
     serializer_class = EmployeeSerializer
     parser_classes = (MultiPartParser, FormParser, JSONParser)
 

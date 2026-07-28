@@ -174,9 +174,6 @@ class AttendanceViewSet(viewsets.ReadOnlyModelViewSet):
         from core.utils import get_visible_users
         return get_visible_users(self.request.user)
 
-    def get_queryset(self):
-        return User.objects.all()
-
     @action(detail=False, methods=['get'])
     def summary(self, request):
         from core.utils import get_visible_users
@@ -203,11 +200,11 @@ class LeaderboardViewSet(viewsets.ReadOnlyModelViewSet):
     serializer_class = LeaderboardEntrySerializer
 
     def get_queryset(self):
-        from authentication.models import User
+        from core.utils import get_visible_users
         from Project.models import Task
         
         # Calculate real-time dynamic points based on ACTUAL completed tasks
-        users = User.objects.all()
+        users = get_visible_users(self.request.user)
         for user in users:
             # Get tasks assigned to the user that are completed (10 points each)
             completed_assigned = Task.objects.filter(assigned_to=user, status='done').count()

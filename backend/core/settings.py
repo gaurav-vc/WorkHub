@@ -78,7 +78,7 @@ MIDDLEWARE = [
     'core.middleware.TenantMiddleware',
     'role_base_access.middleware.RBACEnforcementMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
-    'django.middleware.clickjacking.XFrameOptionsMiddleware',
+    # 'django.middleware.clickjacking.XFrameOptionsMiddleware', # Disabled to allow iframe previews on frontend
 ]
 
 ROOT_URLCONF = 'core.urls'
@@ -225,3 +225,10 @@ MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
 
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
+
+# Max upload limits for 10MB file support
+DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760
+FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
+
+# Allow iframe previews on frontend
+X_FRAME_OPTIONS = 'ALLOWALL'
