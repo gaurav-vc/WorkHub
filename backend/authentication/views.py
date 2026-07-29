@@ -950,7 +950,6 @@ class CurrentUserProfileView(APIView):
             if profile:
                 if profile.role_relationship:
                     role = profile.role_relationship.name
-                    department = profile.role_relationship.name
                 if profile.reporting_to:
                     reporting_to = profile.reporting_to.get_full_name() or profile.reporting_to.username
         except Exception:
@@ -975,12 +974,16 @@ class CurrentUserProfileView(APIView):
         except Exception:
             pass
             
-        # Get organization name
+        # Get organization name and site name
         org_name = ""
+        site_name = ""
         try:
             org_profile = getattr(user, 'org_profile', None)
-            if org_profile and org_profile.organization:
-                org_name = org_profile.organization.name
+            if org_profile:
+                if org_profile.organization:
+                    org_name = org_profile.organization.name
+                if org_profile.site:
+                    site_name = org_profile.site.site_name
         except Exception:
             pass
 
@@ -992,6 +995,7 @@ class CurrentUserProfileView(APIView):
             "role": role,
             "department": department,
             "organization": org_name,
+            "site": site_name,
             "reporting_to": reporting_to,
             "phone": phone,
             "location": location,

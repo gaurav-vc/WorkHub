@@ -226,9 +226,9 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 
-# Max upload limits for 10MB file support
-DATA_UPLOAD_MAX_MEMORY_SIZE = 10485760
-FILE_UPLOAD_MAX_MEMORY_SIZE = 10485760
+# Max upload limits for 20MB file support
+DATA_UPLOAD_MAX_MEMORY_SIZE = 20971520
+FILE_UPLOAD_MAX_MEMORY_SIZE = 20971520
 
 # Allow iframe previews on frontend
 X_FRAME_OPTIONS = 'ALLOWALL'
