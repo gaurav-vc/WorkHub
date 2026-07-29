@@ -36,6 +36,23 @@ class ChannelViewSet(viewsets.ModelViewSet):
             channel = Channel.objects.create(is_group=False)
             channel.members.add(request.user)
             channel.members.add(other_user_id)
+            
+            # Broadcast new channel to the other user
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                channel_layer = get_channel_layer()
+                group_name = f"user_{other_user_id}"
+                async_to_sync(channel_layer.group_send)(
+                    group_name,
+                    {
+                        "type": "new_channel",
+                        "channel_id": channel.id,
+                    }
+                )
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to broadcast new_channel: {e}")
         
         serializer = self.get_serializer(channel)
         return Response(serializer.data)
@@ -75,6 +92,24 @@ class ChannelViewSet(viewsets.ModelViewSet):
                         user=request.user,  # Using the user who added them
                         content=f"{user.get_full_name() or user.username} has joined the channel."
                     )
+                    
+                    # Broadcast new channel to the added user
+                    try:
+                        from channels.layers import get_channel_layer
+                        from asgiref.sync import async_to_sync
+                        channel_layer = get_channel_layer()
+                        group_name = f"user_{user.id}"
+                        async_to_sync(channel_layer.group_send)(
+                            group_name,
+                            {
+                                "type": "new_channel",
+                                "channel_id": channel.id,
+                            }
+                        )
+                    except Exception as e:
+                        import logging
+                        logging.error(f"Failed to broadcast new_channel on add_member: {e}")
+
             except User.DoesNotExist:
                 continue
                 
@@ -150,5 +185,26 @@ class MessageViewSet(viewsets.ModelViewSet):
                     title=f"New Message in #{channel.name}",
                     message=f"{self.request.user.get_full_name() or self.request.user.username}: {message.content[:50]}"
                 )
+                
+            # Broadcast via WebSockets
+            try:
+                from channels.layers import get_channel_layer
+                from asgiref.sync import async_to_sync
+                channel_layer = get_channel_layer()
+                message_data = self.get_serializer(message).data
+                for member in channel.members.all():
+                    group_name = f"user_{member.id}"
+                    async_to_sync(channel_layer.group_send)(
+                        group_name,
+                        {
+                            "type": "chat_message",
+                            "channel_id": channel.id,
+                            "message": message_data
+                        }
+                    )
+            except Exception as e:
+                import logging
+                logging.error(f"Failed to broadcast websocket message: {e}")
+                
         else:
             serializer.save()

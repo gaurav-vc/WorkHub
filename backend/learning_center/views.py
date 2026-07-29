@@ -250,6 +250,20 @@ class AssessmentSessionViewSet(viewsets.ModelViewSet):
         user_type = getattr(getattr(request.user, 'auth_profile', None), 'user_type', 'employee')
         if user_type == 'employee':
             attempts_left = max_attempts - attempts_taken
+            
+            # If the user has exhausted all attempts and failed, lock the assessment by resetting progress
+            if attempts_left <= 0 and not session.passed:
+                # Wipe video progress so they have to rewatch
+                VideoProgress.objects.filter(
+                    employee_name=session.employee_name, 
+                    course_point__topic__course=session.course
+                ).delete()
+                
+                # Wipe previous failed assessment sessions so the attempts counter resets for the next round
+                AssessmentSession.objects.filter(
+                    employee_name=session.employee_name,
+                    course=session.course
+                ).delete()
         else:
             attempts_left = 999
         

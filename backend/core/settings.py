@@ -27,6 +27,7 @@ ALLOWED_HOSTS = ['workhub.vibesandbox.live', '103.192.198.102', 'localhost', '12
 # Application definition
 
 INSTALLED_APPS = [
+    'daphne',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -36,6 +37,8 @@ INSTALLED_APPS = [
 
     'rest_framework',
     'corsheaders',
+    'channels',
+    
     'api',
     'django_filters',
     'templatesapp.apps.TemplatesappConfig',
@@ -67,6 +70,13 @@ INSTALLED_APPS = [
     'learning_center',
     'core'
 ]
+
+ASGI_APPLICATION = 'core.asgi.application'
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
+}
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
