@@ -5,12 +5,14 @@ from django.contrib.auth import get_user_model
 User = get_user_model()
 
 class Channel(TenantModel):
-    name = models.CharField(max_length=100, unique=True)
+    name = models.CharField(max_length=100, unique=False, blank=True)
     description = models.CharField(max_length=255, blank=True)
+    is_group = models.BooleanField(default=False)
     members = models.ManyToManyField(User, related_name='chat_channels')
 
     def __str__(self):
-        return self.name
+        return self.name or "1-to-1 Chat"
+
 
 class Message(TenantModel):
     channel = models.ForeignKey(Channel, on_delete=models.CASCADE, related_name='messages')

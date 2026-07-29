@@ -934,3 +934,91 @@ def get_leaderboard(request):
             "badges": p.badges
         })
     return Response(data)
+
+class CurrentUserProfileView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def get(self, request):
+        user = request.user
+        
+        # Get auth profile
+        role = "Member"
+        department = "General"
+        reporting_to = None
+        try:
+            profile = getattr(user, 'auth_profile', None)
+            if profile:
+                if profile.role_relationship:
+                    role = profile.role_relationship.name
+                    department = profile.role_relationship.name
+                if profile.reporting_to:
+                    reporting_to = profile.reporting_to.get_full_name() or profile.reporting_to.username
+        except Exception:
+            pass
+
+        # Get employee profile for extra info if it exists
+        phone = ""
+        location = ""
+        skills = []
+        try:
+            from directory.models import Employee
+            employee = Employee.objects.filter(email=user.email).first()
+            if employee:
+                phone = employee.phone or phone
+                location = employee.location or location
+                if employee.skills:
+                    skills = employee.skills
+                if employee.role:
+                    role = employee.role
+                if employee.department:
+                    department = employee.department
+        except Exception:
+            pass
+            
+        # Get organization name
+        org_name = ""
+        try:
+            org_profile = getattr(user, 'org_profile', None)
+            if org_profile and org_profile.organization:
+                org_name = org_profile.organization.name
+        except Exception:
+            pass
+
+        return Response({
+            "id": user.id,
+            "username": user.username,
+            "email": user.email,
+            "full_name": user.get_full_name() or user.username,
+            "role": role,
+            "department": department,
+            "organization": org_name,
+            "reporting_to": reporting_to,
+            "phone": phone,
+            "location": location,
+            "skills": skills,
+            "is_superuser": user.is_superuser
+        })
+
+class ChangePasswordView(APIView):
+    permission_classes = (IsAuthenticated,)
+
+    def post(self, request):
+        user = request.user
+        current_password = request.data.get('current_password')
+        new_password = request.data.get('new_password')
+
+        if not current_password or not new_password:
+            return Response({'error': 'Both current and new passwords are required.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(current_password):
+            return Response({'error': 'Current password is incorrect.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            validate_password(new_password)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        
+        return Response({'message': 'Password changed successfully.'})

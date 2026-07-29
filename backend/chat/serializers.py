@@ -21,10 +21,11 @@ class MessageSerializer(serializers.ModelSerializer):
 class ChannelSerializer(serializers.ModelSerializer):
     # This matches your React interface
     unread = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = Channel
-        fields = ['id', 'name', 'description', 'unread']
+        fields = ['id', 'name', 'display_name', 'description', 'unread', 'is_group']
 
     def get_unread(self, obj):
         request = self.context.get('request')
@@ -35,3 +36,18 @@ class ChannelSerializer(serializers.ModelSerializer):
         if state:
             return Message.objects.filter(channel=obj, timestamp__gt=state.last_read_timestamp).count()
         return Message.objects.filter(channel=obj).count()
+
+    def get_display_name(self, obj):
+        if obj.is_group:
+            return obj.name
+        
+        request = self.context.get('request')
+        if not request or not request.user.is_authenticated:
+            return obj.name
+
+        # For 1-to-1 chats, find the other member's name
+        other_member = obj.members.exclude(id=request.user.id).first()
+        if other_member:
+            return other_member.get_full_name() or other_member.username
+        
+        return "Just You"

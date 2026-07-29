@@ -13,10 +13,32 @@ class ChannelViewSet(viewsets.ModelViewSet):
 
 
     def get_queryset(self):
+        return Channel.objects.filter(members=self.request.user)
 
-        return Channel.objects.all()
     serializer_class = ChannelSerializer
     permission_classes = [permissions.IsAuthenticated]
+
+    def perform_create(self, serializer):
+        channel = serializer.save(is_group=True)
+        channel.members.add(self.request.user)
+
+    @action(detail=False, methods=['post'])
+    def get_or_create_dm(self, request):
+        other_user_id = request.data.get('user_id')
+        if not other_user_id:
+            return Response({"error": "user_id required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+        # Check if DM already exists
+        channels = Channel.objects.filter(is_group=False, members=request.user).filter(members__id=other_user_id)
+        if channels.exists():
+            channel = channels.first()
+        else:
+            channel = Channel.objects.create(is_group=False)
+            channel.members.add(request.user)
+            channel.members.add(other_user_id)
+        
+        serializer = self.get_serializer(channel)
+        return Response(serializer.data)
 
     @action(detail=True, methods=['post'])
     def add_member(self, request, pk=None):

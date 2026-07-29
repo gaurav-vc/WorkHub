@@ -7,7 +7,7 @@ from .views import (
     PendingUsersView, ApproveUserView,
     EmployeeDepartmentView, AssignDepartmentView, RemoveFromDepartmentView,
     CreateActiveUserView, CreateAdminView, OrganizationViewSet, AssignManagerView,
-    get_leaderboard
+    get_leaderboard, CurrentUserProfileView, ChangePasswordView
 )
 
 router = DefaultRouter()
@@ -30,5 +30,7 @@ urlpatterns = [
     path('create-user/', CreateActiveUserView.as_view(), name='create-user'),
     path('create-admin/', CreateAdminView.as_view(), name='create-admin'),
     path('leaderboard/', get_leaderboard, name='leaderboard'),
+    path('me/', CurrentUserProfileView.as_view(), name='current-user'),
+    path('change-password/', ChangePasswordView.as_view(), name='change-password'),
     path('', include(router.urls)),
 ]
