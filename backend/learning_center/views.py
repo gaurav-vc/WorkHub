@@ -112,6 +112,8 @@ class QuestionBankViewSet(viewsets.ModelViewSet):
                 normalized_row = {k.strip().lower().replace(' ', '_'): v for k, v in row.items() if k}
                 questions_to_create.append(QuestionBank(
                     course=course,
+                    organization=course.organization,
+                    site=course.site,
                     question_text=normalized_row.get('question_text', normalized_row.get('question', '')),
                     option_a=normalized_row.get('option_a', ''),
                     option_b=normalized_row.get('option_b', ''),
