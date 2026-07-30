@@ -642,6 +642,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         return Response({
             'role': role,
             'username': user.username,
+            'full_name': user.get_full_name() or user.username,
             'email': user.email,
             'user_type': user_type,
             'org_name': org_name,

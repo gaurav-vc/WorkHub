@@ -8,7 +8,7 @@ class MessageSerializer(serializers.ModelSerializer):
     
     class Meta:
         model = Message
-        fields = ['id', 'channel', 'user', 'initials', 'time', 'content', 'reactions', 'file', 'file_name']
+        fields = ['id', 'channel', 'user', 'initials', 'time', 'timestamp', 'content', 'reactions', 'file', 'file_name']
 
     def get_initials(self, obj):
         name = obj.user.get_full_name() or obj.user.username
