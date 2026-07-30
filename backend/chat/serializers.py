@@ -34,8 +34,8 @@ class ChannelSerializer(serializers.ModelSerializer):
         from .models import UserChannelState, Message
         state = UserChannelState.objects.filter(user=request.user, channel=obj).first()
         if state:
-            return Message.objects.filter(channel=obj, timestamp__gt=state.last_read_timestamp).count()
-        return Message.objects.filter(channel=obj).count()
+            return Message.objects.filter(channel=obj, timestamp__gt=state.last_read_timestamp).exclude(user=request.user).count()
+        return Message.objects.filter(channel=obj).exclude(user=request.user).count()
 
     def get_display_name(self, obj):
         if obj.is_group:
