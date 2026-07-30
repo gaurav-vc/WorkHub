@@ -207,9 +207,9 @@ class LeaderboardViewSet(viewsets.ReadOnlyModelViewSet):
         users = get_visible_users(self.request.user)
         for user in users:
             # Get tasks assigned to the user that are completed (10 points each)
-            completed_assigned = Task.objects.filter(assigned_to=user, status='done').count()
+            completed_assigned = Task.objects.filter(assigned_to=user, status__in=['done', 'completed']).count()
             # Get tasks created by the user that are completed (5 points each)
-            completed_created = Task.objects.filter(created_by=user, status='done').count()
+            completed_created = Task.objects.filter(created_by=user, status__in=['done', 'completed']).exclude(assigned_to=user).count()
             
             real_points = (completed_assigned * 10) + (completed_created * 5)
             # Level up every 50 points, start at level 1

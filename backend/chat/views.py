@@ -28,14 +28,19 @@ class ChannelViewSet(viewsets.ModelViewSet):
         if not other_user_id:
             return Response({"error": "user_id required"}, status=status.HTTP_400_BAD_REQUEST)
         
+        try:
+            other_user = User.objects.get(id=other_user_id)
+        except User.DoesNotExist:
+            return Response({"error": "User does not exist"}, status=status.HTTP_404_NOT_FOUND)
+            
         # Check if DM already exists
-        channels = Channel.objects.filter(is_group=False, members=request.user).filter(members__id=other_user_id)
+        channels = Channel.objects.filter(is_group=False, members=request.user).filter(members=other_user)
         if channels.exists():
             channel = channels.first()
         else:
             channel = Channel.objects.create(is_group=False)
             channel.members.add(request.user)
-            channel.members.add(other_user_id)
+            channel.members.add(other_user)
             
             # Broadcast new channel to the other user
             try:

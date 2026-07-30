@@ -225,7 +225,8 @@ class MOMSerializer(serializers.ModelSerializer):
         instance.save()
 
         if points_data is not None:
-            point_ids = [p.get('id') for p in points_data if p.get('id')]
+            # Filter out frontend temporary IDs like Date.now() which exceed 32-bit int
+            point_ids = [p.get('id') for p in points_data if p.get('id') and isinstance(p.get('id'), int) and p.get('id') < 2147483647]
             instance.points.exclude(id__in=point_ids).delete()
             
             for point_data in points_data:
@@ -238,8 +239,14 @@ class MOMSerializer(serializers.ModelSerializer):
                         pass
                         
                 point_id = point_data.get('id')
+                p = None
                 if point_id:
-                    p = MOMPoint.objects.get(id=point_id, mom=instance)
+                    try:
+                        p = MOMPoint.objects.get(id=point_id, mom=instance)
+                    except MOMPoint.DoesNotExist:
+                        p = None
+                        
+                if p:
                     old_assignee = p.assigned_to
                     p.text = point_data.get('text', p.text)
                     p.assigned_to = assigned_to_user

@@ -639,10 +639,23 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                 if mod_id in normalized_site_modules or not mod_id:
                     data.append(item)
                     
+        # Check for cross department access
+        cross_department_access = False
+        try:
+            profile = getattr(user, 'auth_profile', None)
+            if profile and profile.role_relationship:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(name=profile.role_relationship.name).first()
+                if rbac_role and getattr(rbac_role, 'cross_department_access', False):
+                    cross_department_access = True
+        except Exception:
+            pass
+
         return Response({
             'role': role,
             'username': user.username,
             'full_name': user.get_full_name() or user.username,
+            'cross_department_access': cross_department_access,
             'email': user.email,
             'user_type': user_type,
             'org_name': org_name,

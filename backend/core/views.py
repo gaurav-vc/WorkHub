@@ -10,22 +10,8 @@ class TenantModelViewSet(viewsets.ModelViewSet):
     parser_classes = (MultiPartParser, FormParser, JSONParser)
     
     def get_organization(self):
-        user = self.request.user
-        if not user or not user.is_authenticated:
-            return None
-        
-        try:
-            profile = getattr(user, 'auth_profile', None)
-            if profile and profile.user_type == 'super_user':
-                return None 
-                
-            org_profile = getattr(user, 'org_profile', None)
-            if org_profile and org_profile.organization:
-                return org_profile.organization
-        except Exception:
-            pass
-            
-        return None
+        from core.tenant import get_current_organization
+        return get_current_organization()
 
     def get_queryset(self):
         queryset = super().get_queryset()
