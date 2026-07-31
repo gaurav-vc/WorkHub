@@ -23,9 +23,22 @@ class ChannelSerializer(serializers.ModelSerializer):
     unread = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
 
+    member_details = serializers.SerializerMethodField()
+
     class Meta:
         model = Channel
-        fields = ['id', 'name', 'display_name', 'description', 'unread', 'is_group']
+        fields = ['id', 'name', 'display_name', 'description', 'unread', 'is_group', 'member_details']
+
+    def get_member_details(self, obj):
+        if not obj.is_group:
+            return []
+        members = obj.members.all()
+        return [{
+            'id': m.id,
+            'name': m.get_full_name() or m.username,
+            'username': m.username,
+            'date_joined': m.date_joined.isoformat() if m.date_joined else None
+        } for m in members]
 
     def get_unread(self, obj):
         request = self.context.get('request')
