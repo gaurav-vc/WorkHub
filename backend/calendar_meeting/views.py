@@ -176,7 +176,25 @@ def event_create(request):
         interval_end_day = int(interval_end_day_raw) if interval_end_day_raw else 31
 
         meetings_to_create = []
+        tasks_to_create = []
         current_dt = dt
+        
+        is_task = (meeting_type == 'task')
+        if is_task:
+            from Project.models import Task, Project
+            from django.contrib.auth.models import User
+            
+            project, _ = Project.objects.get_or_create(
+                name="General Workspace",
+                defaults={'created_by': request.user, 'department': 'General'}
+            )
+            
+            internal_attendee_ids = request.data.get('internal_attendee_ids', [])
+            assigned_to = None
+            if internal_attendee_ids and len(internal_attendee_ids) > 0:
+                assigned_to = User.objects.filter(id=internal_attendee_ids[0]).first()
+            if not assigned_to:
+                assigned_to = request.user
 
         if recurrence_type != 'none' and recurrence_end_date:
             end_dt = dateutil_parse(recurrence_end_date)
@@ -189,20 +207,33 @@ def event_create(request):
             while current_dt.date() <= end_dt.date() and count < max_meetings:
                 # For monthly_interval, only create if the day is within the range
                 if recurrence_type != 'monthly_interval' or (interval_start_day <= current_dt.day <= interval_end_day):
-                    meeting = Meeting.objects.create(
-                        title=title,
-                        meeting_time=current_dt,
-                        duration=duration,
-                        meeting_type=meeting_type,
-                        description=description,
-                        meeting_link=meeting_link,
-                        platform=platform,
-                        is_recurring=True,
-                        recurring_type=recurrence_type,
-                        recurring_end_date=end_dt,
-                        organizer=request.user
-                    )
-                    meetings_to_create.append(meeting)
+                    if is_task:
+                        task = Task.objects.create(
+                            title=title,
+                            description=description,
+                            due_date=current_dt.date(),
+                            due_time=current_dt.time(),
+                            created_by=request.user,
+                            assigned_to=assigned_to,
+                            project=project,
+                            status='pending'
+                        )
+                        tasks_to_create.append(task)
+                    else:
+                        meeting = Meeting.objects.create(
+                            title=title,
+                            meeting_time=current_dt,
+                            duration=duration,
+                            meeting_type=meeting_type,
+                            description=description,
+                            meeting_link=meeting_link,
+                            platform=platform,
+                            is_recurring=True,
+                            recurring_type=recurrence_type,
+                            recurring_end_date=end_dt,
+                            organizer=request.user
+                        )
+                        meetings_to_create.append(meeting)
                     count += 1
                 
                 if recurrence_type == 'daily' or recurrence_type == 'monthly_interval':
@@ -215,27 +246,44 @@ def event_create(request):
                 else:
                     break
         else:
-            meeting = Meeting.objects.create(
-                title=title,
-                meeting_time=dt,
-                duration=duration,
-                meeting_type=meeting_type,
-                description=description,
-                meeting_link=meeting_link,
-                platform=platform,
-                organizer=request.user
-            )
-            meetings_to_create.append(meeting)
+            if is_task:
+                task = Task.objects.create(
+                    title=title,
+                    description=description,
+                    due_date=current_dt.date(),
+                    due_time=current_dt.time(),
+                    created_by=request.user,
+                    assigned_to=assigned_to,
+                    project=project,
+                    status='pending'
+                )
+                tasks_to_create.append(task)
+            else:
+                meeting = Meeting.objects.create(
+                    title=title,
+                    meeting_time=dt,
+                    duration=duration,
+                    meeting_type=meeting_type,
+                    description=description,
+                    meeting_link=meeting_link,
+                    platform=platform,
+                    organizer=request.user
+                )
+                meetings_to_create.append(meeting)
         
         internal_attendee_ids = request.data.get('internal_attendee_ids', [])
         external_emails = request.data.get('external_emails', '')
         
-        for m in meetings_to_create:
-            if internal_attendee_ids:
-                m.attendees.set(internal_attendee_ids)
-            if external_emails:
-                m.external_attendees = external_emails
-                m.save()
+        if not is_task:
+            for m in meetings_to_create:
+                if internal_attendee_ids:
+                    m.attendees.set(internal_attendee_ids)
+                if external_emails:
+                    m.external_attendees = external_emails
+                    m.save()
+        else:
+            # For tasks, we already set the single assignee above.
+            pass
 
         # Gather all emails to invite
         import re

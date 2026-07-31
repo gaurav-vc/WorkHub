@@ -482,6 +482,13 @@ class TaskViewSet(TenantModelViewSet):
         if data.get('effortUnit'):
             data['effort_unit'] = data.get('effortUnit')
             
+        if data.get('priority'):
+            # Frontend sends "P1 Critical", etc. Backend expects "P1", "P2", etc.
+            data['priority'] = str(data.get('priority'))[:2]
+            
+        if data.get('dueTime'):
+            data['due_time'] = data.get('dueTime')
+            
         # Provide default due_date as model requires it
         if not data.get('due_date'):
             from django.utils import timezone

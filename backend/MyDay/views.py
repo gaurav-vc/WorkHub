@@ -64,6 +64,19 @@ def dashboard(request):
             "due_date": t.due_date.isoformat() if t.due_date else None,
         })
 
+    # ── Delegated Tasks: tasks created by user but assigned to someone else ──
+    delegated_qs = Task.objects.filter(created_by=user).exclude(assigned_to=user).select_related('project', 'assigned_to').order_by('-created_at')[:20]
+    delegated_tasks_data = []
+    for t in delegated_qs:
+        assignee_name = t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Unassigned"
+        delegated_tasks_data.append({
+            "id": t.id,
+            "title": t.title,
+            "status": t.status or "pending",
+            "assignee": assignee_name,
+            "due_date": t.due_date.isoformat() if t.due_date else None,
+        })
+
     # ── Merge Boards Cards ───────────────────────────────────────────────────
     cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:20]
     for c in cards_qs:
@@ -196,6 +209,7 @@ def dashboard(request):
         "currentUser": profile_data,
         "summaryStats": summary,
         "todayTasks": today_tasks_data,
+        "delegatedTasks": delegated_tasks_data,
         "upcomingMeetings": MeetingSerializer(meetings_qs, many=True).data,
         "teamActivity": TeamActivitySerializer(activity_qs, many=True).data,
         "pendingApprovals": combined_approvals,
