@@ -397,6 +397,12 @@ class TaskViewSet(TenantModelViewSet):
                 if rbac_role and getattr(rbac_role, 'cross_department_access', False):
                     global_access = True
                     
+        # Check employee profile role as fallback
+        if not global_access:
+            emp_profile = getattr(user, 'res_employee', None)
+            if emp_profile and emp_profile.role and emp_profile.role.lower() in ['admin', 'site_admin', 'super_user', 'site admin']:
+                global_access = True
+
         if global_access:
             return queryset
             
