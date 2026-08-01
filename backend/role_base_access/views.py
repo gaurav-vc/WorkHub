@@ -566,11 +566,14 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
         org_name = None
         site_name = None
         site_modules = []
+        advanced_settings = {}
         try:
             org_profile = getattr(user, 'org_profile', None)
             if org_profile:
                 if org_profile.organization:
                     org_name = org_profile.organization.name
+                    if org_profile.organization.advanced_settings:
+                        advanced_settings = org_profile.organization.advanced_settings
                 if org_profile.site:
                     site_name = org_profile.site.name
                     if org_profile.site.modules_access:
@@ -660,6 +663,7 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
             'user_type': user_type,
             'org_name': org_name,
             'site_name': site_name,
+            'advanced_settings': advanced_settings,
             'access': data,
             'warning': warning
         })

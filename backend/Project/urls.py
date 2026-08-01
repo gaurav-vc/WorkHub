@@ -1,5 +1,6 @@
 from django.urls import path
 from . import views
+from . import report_views
 
 urlpatterns = [
     path('', views.project_list_create, name='project-list-create'),
@@ -11,4 +12,7 @@ urlpatterns = [
     path('tasks/<int:task_id>/add_checklist/', views.add_checklist, name='add-checklist'),
     path('tasks/<int:task_id>/add_chat/', views.add_chat, name='add-chat'),
     path('tasks/<int:task_id>/add_comment/', views.add_comment, name='add-comment'),
+    
+    # Reports
+    path('reports/employee-stats/', report_views.employee_stats_report, name='employee-stats-report'),
 ]
