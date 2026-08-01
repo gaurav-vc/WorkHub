@@ -22,18 +22,21 @@ def employee_stats_report(request):
     if not is_site_admin(request.user):
         return Response({"error": "Unauthorized. Site Admin access required."}, status=403)
         
-    employee_id = request.query_params.get('employee_id')
+    employee_ids = request.query_params.get('employee_ids') or request.query_params.get('employee_id')
     start_date_str = request.query_params.get('start_date')
     end_date_str = request.query_params.get('end_date')
     quick_filter = request.query_params.get('quick_filter')
     
-    if not employee_id:
-        return Response({"error": "employee_id is required."}, status=400)
+    if not employee_ids:
+        return Response({"error": "employee_ids is required."}, status=400)
         
-    try:
-        employee = User.objects.get(id=employee_id)
-    except User.DoesNotExist:
-        return Response({"error": "Employee not found."}, status=404)
+    ids_list = [int(eid.strip()) for eid in employee_ids.split(',') if eid.strip().isdigit()]
+    if not ids_list:
+        return Response({"error": "Invalid employee IDs."}, status=400)
+        
+    employees = User.objects.filter(id__in=ids_list)
+    if not employees.exists():
+        return Response({"error": "Employees not found."}, status=404)
         
     today = timezone.now().date()
     start_date = None
@@ -53,8 +56,8 @@ def employee_stats_report(request):
             return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
             
     # Base query for tasks assigned to the employee
-    assigned_tasks = Task.objects.filter(assigned_to=employee)
-    created_tasks = Task.objects.filter(created_by=employee)
+    assigned_tasks = Task.objects.filter(assigned_to__in=employees)
+    created_tasks = Task.objects.filter(created_by__in=employees)
     
     if start_date:
         assigned_tasks = assigned_tasks.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
@@ -106,12 +109,22 @@ def employee_stats_report(request):
             "created_at": t.created_at.strftime('%Y-%m-%d')
         })
         
+    if employees.count() == 1:
+        emp = employees.first()
+        emp_data = {
+            "id": emp.id,
+            "name": emp.get_full_name() or emp.username,
+            "email": emp.email
+        }
+    else:
+        emp_data = {
+            "id": -1,
+            "name": "Multiple Employees",
+            "email": ""
+        }
+        
     return Response({
-        "employee": {
-            "id": employee.id,
-            "name": employee.get_full_name() or employee.username,
-            "email": employee.email
-        },
+        "employee": emp_data,
         "kpis": {
             "total_assigned": total_assigned,
             "total_created": total_created,
