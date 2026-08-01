@@ -365,6 +365,44 @@ class TaskViewSet(TenantModelViewSet):
     permission_classes = [IsAuthenticated, RBACPermission]
     rbac_module = 'tasks-projects'
 
+    def _has_global_access(self, user):
+        if user.is_superuser:
+            return True
+            
+        profile = getattr(user, 'auth_profile', None)
+        if profile:
+            if profile.user_type in ['super_user', 'site_admin']:
+                return True
+            elif profile.role_relationship:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(name=profile.role_relationship.name).first()
+                if rbac_role and getattr(rbac_role, 'cross_department_access', False):
+                    return True
+                    
+        emp_profile = getattr(user, 'res_employee', None)
+        if emp_profile and emp_profile.role and emp_profile.role.lower() in ['admin', 'site_admin', 'super_user', 'site admin']:
+            return True
+            
+        return False
+
+    def _notify_workspace(self, org, event_type, data):
+        if not org:
+            return
+        from channels.layers import get_channel_layer
+        from asgiref.sync import async_to_sync
+        try:
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                f"org_{org.id}",
+                {
+                    "type": "workspace_event",
+                    "event_type": event_type,
+                    "data": data
+                }
+            )
+        except Exception as e:
+            print(f"Error notifying workspace: {e}")
+
     def get_queryset(self):
         queryset = super().get_queryset()
         
@@ -381,33 +419,14 @@ class TaskViewSet(TenantModelViewSet):
         )
 
         user = self.request.user
-        
-        # Site admins, super users, and roles with cross-department access see all tasks
-        global_access = False
-        if user.is_superuser:
-            global_access = True
-            
-        profile = getattr(user, 'auth_profile', None)
-        if profile:
-            if profile.user_type in ['super_user', 'site_admin']:
-                global_access = True
-            elif profile.role_relationship:
-                from role_base_access.models import Role as RBACRole
-                rbac_role = RBACRole.objects.filter(name=profile.role_relationship.name).first()
-                if rbac_role and getattr(rbac_role, 'cross_department_access', False):
-                    global_access = True
-                    
-        # Check employee profile role as fallback
-        if not global_access:
-            emp_profile = getattr(user, 'res_employee', None)
-            if emp_profile and emp_profile.role and emp_profile.role.lower() in ['admin', 'site_admin', 'super_user', 'site admin']:
-                global_access = True
+        global_access = self._has_global_access(user)
 
         if global_access:
             return queryset
             
         from django.db.models import Q
         user_dept = ""
+        profile = getattr(user, 'auth_profile', None)
         try:
             if profile and profile.role_relationship:
                 user_dept = profile.role_relationship.name
@@ -447,7 +466,14 @@ class TaskViewSet(TenantModelViewSet):
         if user.is_authenticated:
             from boards.models import Card
             from django.db.models import Q
-            cards = Card.objects.filter(Q(assignee=user) | Q(created_by=user)).select_related('column__board', 'assignee', 'created_by')
+            org = self.get_organization()
+            global_access = self._has_global_access(user)
+            
+            if global_access:
+                cards = Card.objects.filter(organization=org).select_related('column__board', 'assignee', 'created_by')
+            else:
+                cards = Card.objects.filter(Q(assignee=user) | Q(created_by=user), organization=org).select_related('column__board', 'assignee', 'created_by')
+                
             for c in cards:
                 card_data = {
                     "id": f"board_card_{c.id}",
@@ -591,6 +617,10 @@ class TaskViewSet(TenantModelViewSet):
             )
 
         headers = self.get_success_headers(serializer.data)
+        
+        # Notify workspace about the new task
+        self._notify_workspace(org, 'tasks_updated', {'action': 'create', 'task_id': task.id})
+        
         return Response(self.get_serializer(task).data, status=status.HTTP_201_CREATED, headers=headers)
 
     def update(self, request, *args, **kwargs):
@@ -742,4 +772,16 @@ class TaskViewSet(TenantModelViewSet):
         if getattr(instance, '_prefetched_objects_cache', None):
             instance._prefetched_objects_cache = {}
 
+        self._notify_workspace(instance.organization, 'tasks_updated', {'action': 'update', 'task_id': instance.id})
+
         return Response(self.get_serializer(instance).data)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        org = instance.organization
+        task_id = instance.id
+        
+        response = super().destroy(request, *args, **kwargs)
+        
+        self._notify_workspace(org, 'tasks_updated', {'action': 'delete', 'task_id': task_id})
+        return response
