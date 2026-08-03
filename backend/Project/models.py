@@ -89,6 +89,7 @@ class Task(TenantModel):
     title = models.CharField(max_length=300)
     project = models.ForeignKey('Project.Project', on_delete=models.CASCADE, related_name='api_tasks', null=True, blank=True)
     assigned_to = models.ForeignKey(User, on_delete=models.CASCADE, related_name='api_assigned_tasks', null=True, blank=True)
+    assignees = models.ManyToManyField(User, related_name='api_multi_assigned_tasks', blank=True)
     created_by = models.ForeignKey(User, on_delete=models.CASCADE, related_name='api_created_tasks', null=True, blank=True)
     priority = models.CharField(max_length=2, choices=PRIORITY_CHOICES, default='P3')
     status = models.CharField(max_length=100, default='pending')

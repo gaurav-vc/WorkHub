@@ -38,6 +38,7 @@ class TaskSerializer(serializers.ModelSerializer):
     chats = serializers.SerializerMethodField()
     created_by_name = serializers.SerializerMethodField()
     assignee_detail = serializers.SerializerMethodField()
+    assignees_detail = serializers.SerializerMethodField()
     health_status = serializers.ReadOnlyField()
 
     class Meta:
@@ -56,6 +57,11 @@ class TaskSerializer(serializers.ModelSerializer):
             name = obj.assigned_to.get_full_name() or obj.assigned_to.username
             return {"id": obj.assigned_to.id, "name": name, "email": obj.assigned_to.email}
         return None
+
+    def get_assignees_detail(self, obj):
+        if hasattr(obj, 'assignees'):
+            return [{"id": a.id, "name": a.get_full_name() or a.username, "email": a.email} for a in obj.assignees.all()]
+        return []
 
     def get_comments(self, obj):
         return TaskCommentSerializer(obj.comments.all(), many=True).data

@@ -34,7 +34,16 @@ def project_list_create(request):
             
         q = base_q & scope_q
             
-        projects = Project.objects.filter(q).exclude(name__iexact="General Workspace").distinct().order_by('-created_at')
+        projects = Project.objects.filter(q).exclude(name__iexact="General Workspace").prefetch_related(
+            'api_tasks',
+            'api_tasks__comments', 'api_tasks__comments__user',
+            'api_tasks__chats', 'api_tasks__chats__user',
+            'api_tasks__attachments', 'api_tasks__attachments__uploaded_by',
+            'api_tasks__subtasks', 'api_tasks__subtasks__assigned_to',
+            'api_tasks__blocking_dependencies',
+            'api_tasks__checklists',
+            'api_tasks__assigned_to', 'api_tasks__created_by'
+        ).distinct().order_by('-created_at')
         serializer = ProjectSerializer(projects, many=True)
         return Response(serializer.data)
 
@@ -96,7 +105,16 @@ def project_detail(request, project_id):
     q = base_q & scope_q
 
     try:
-        project = Project.objects.filter(q, id=project_id).distinct().first()
+        project = Project.objects.filter(q, id=project_id).prefetch_related(
+            'api_tasks',
+            'api_tasks__comments', 'api_tasks__comments__user',
+            'api_tasks__chats', 'api_tasks__chats__user',
+            'api_tasks__attachments', 'api_tasks__attachments__uploaded_by',
+            'api_tasks__subtasks', 'api_tasks__subtasks__assigned_to',
+            'api_tasks__blocking_dependencies',
+            'api_tasks__checklists',
+            'api_tasks__assigned_to', 'api_tasks__created_by'
+        ).distinct().first()
         if not project:
             return Response({"error": "Project not found or you don't have access."}, status=404)
     except Exception:
@@ -445,6 +463,7 @@ class TaskViewSet(TenantModelViewSet):
 
         return queryset.filter(
             Q(assigned_to=user) | 
+            Q(assignees=user) | 
             Q(created_by=user) | 
             Q(project__created_by=user) |
             project_scope_q
@@ -572,6 +591,15 @@ class TaskViewSet(TenantModelViewSet):
         from .models import Task, TaskChecklist
         task = serializer.save(created_by=request.user, project=project, assigned_to=assigned_to_user, organization=org)
         
+        # Save multi-assignees
+        if assignees and len(assignees) > 0:
+            try:
+                from django.contrib.auth.models import User
+                users = User.objects.filter(id__in=assignees)
+                task.assignees.set(users)
+            except Exception:
+                pass
+        
         subtasks_data = data.get('subtasks', [])
         if isinstance(subtasks_data, str):
             try:
@@ -660,6 +688,18 @@ class TaskViewSet(TenantModelViewSet):
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
         self.perform_update(serializer)
+
+        # Save multi-assignees if passed
+        if 'assigneeIds' in data:
+            if assignees and len(assignees) > 0:
+                try:
+                    from django.contrib.auth.models import User
+                    users = User.objects.filter(id__in=assignees)
+                    instance.assignees.set(users)
+                except Exception:
+                    pass
+            else:
+                instance.assignees.clear()
 
         # Reload instance to get new status
         instance.refresh_from_db()
