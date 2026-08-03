@@ -19,7 +19,7 @@ class TenantModelViewSet(viewsets.ModelViewSet):
         
         user = self.request.user
         profile = getattr(user, 'auth_profile', None)
-        if profile and profile.user_type == 'super_user':
+        if user.is_superuser or (profile and profile.user_type == 'super_user'):
             # Super admins see all records (unfiltered)
             return queryset
             
