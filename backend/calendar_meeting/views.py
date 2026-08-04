@@ -64,7 +64,8 @@ def event_list(request):
     for t in tasks:
         # Convert date to datetime for unified representation
         task_due_date = t.due_date if t.due_date else timezone.now().date()
-        due_dt = datetime.datetime.combine(task_due_date, datetime.time(9, 0))
+        task_due_time = t.due_time if t.due_time else datetime.time(9, 0)
+        due_dt = datetime.datetime.combine(task_due_date, task_due_time)
         if timezone.is_naive(due_dt):
             try:
                 due_dt = timezone.make_aware(due_dt)
