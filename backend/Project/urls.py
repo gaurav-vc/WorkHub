@@ -5,6 +5,8 @@ from . import report_views
 urlpatterns = [
     path('', views.project_list_create, name='project-list-create'),
     path('<int:project_id>/', views.project_detail, name='project-detail'),
+    path('<int:project_id>/duplicate/', views.duplicate_project, name='duplicate-project'),
+    path('<int:project_id>/export/', views.export_project, name='export-project'),
     path('<int:project_id>/add_task/', views.add_task, name='add-task'),
     path('tasks/<int:task_id>/', views.update_task, name='update-task'),
     path('tasks/<int:task_id>/upload/', views.upload_task_attachment, name='upload-task-attachment'),

@@ -136,6 +136,98 @@ def project_detail(request, project_id):
         return Response({"message": "Project deleted successfully."}, status=200)
 
 @api_view(['POST'])
+def duplicate_project(request, project_id):
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return Response({"error": "Project not found."}, status=404)
+        
+    # Create new project
+    new_project = Project.objects.create(
+        name=f"{project.name} (Copy)",
+        description=project.description,
+        status=project.status,
+        progress=project.progress,
+        department=project.department,
+        template_type=project.template_type,
+        due_date=project.due_date,
+        team_data=project.team_data,
+        tasks_data=project.tasks_data,
+        created_by=request.user if request.user.is_authenticated else project.created_by,
+        organization=getattr(project, 'organization', None)
+    )
+    
+    # Clone tasks
+    from .models import Task as ApiTask
+    old_tasks = ApiTask.objects.filter(project=project)
+    task_mapping = {}
+    
+    for t in old_tasks:
+        new_task = ApiTask.objects.create(
+            title=t.title,
+            project=new_project,
+            assigned_to=t.assigned_to,
+            created_by=request.user if request.user.is_authenticated else t.created_by,
+            priority=t.priority,
+            status=t.status,
+            due_date=t.due_date,
+            due_time=t.due_time,
+            description=t.description,
+            time_interval_minutes=t.time_interval_minutes,
+            parent_task=None, # We'll map parent tasks in pass 2 if needed
+            organization=getattr(t, 'organization', None)
+        )
+        task_mapping[t.id] = new_task
+        
+        # copy many-to-many assignees
+        if t.assignees.exists():
+            new_task.assignees.set(t.assignees.all())
+            
+    # Map parent tasks and dependencies if applicable
+    for t in old_tasks:
+        if t.parent_task_id and t.parent_task_id in task_mapping:
+            new_task = task_mapping[t.id]
+            new_task.parent_task = task_mapping[t.parent_task_id]
+            new_task.save()
+            
+    return Response(ProjectSerializer(new_project).data, status=201)
+
+import csv
+from django.http import HttpResponse
+
+@api_view(['GET'])
+def export_project(request, project_id):
+    try:
+        project = Project.objects.get(id=project_id)
+    except Project.DoesNotExist:
+        return Response({"error": "Project not found."}, status=404)
+        
+    response = HttpResponse(content_type='text/csv')
+    response['Content-Disposition'] = f'attachment; filename="{project.name}_tasks.csv"'
+    
+    writer = csv.writer(response)
+    writer.writerow(['Task Title', 'Description', 'Status', 'Priority', 'Due Date', 'Assignee'])
+    
+    from .models import Task as ApiTask
+    tasks = ApiTask.objects.filter(project=project)
+    
+    for t in tasks:
+        assignee_name = ""
+        if t.assigned_to:
+            assignee_name = t.assigned_to.get_full_name() or t.assigned_to.username
+        
+        writer.writerow([
+            t.title,
+            t.description,
+            t.status,
+            t.priority,
+            t.due_date,
+            assignee_name
+        ])
+        
+    return response
+
+@api_view(['POST'])
 def add_task(request, project_id):
     from .models import Task as ApiTask
     try:
@@ -184,6 +276,13 @@ def add_task(request, project_id):
             pass
 
     task = ApiTask.objects.create(**task_kwargs)
+    
+    if 'assignees' in request.data:
+        assignees_data = request.data['assignees']
+        if isinstance(assignees_data, list):
+            from django.contrib.auth.models import User
+            users = User.objects.filter(id__in=assignees_data)
+            task.assignees.set(users)
 
     # Recalculate if it's not a subtask, or if you want subtasks to count
     if not parent_task_id:
