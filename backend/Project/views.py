@@ -571,11 +571,16 @@ class TaskViewSet(TenantModelViewSet):
             except:
                 pass
 
-        project_id = data.get('project_id')
+        project_id = data.get('project_id') or data.get('project')
         project = None
-        if project_id:
+        if project_id and str(project_id).isdigit():
             try:
-                project = Project.objects.get(id=project_id)
+                project = Project.objects.get(id=int(project_id))
+            except Project.DoesNotExist:
+                pass
+        elif project_id and isinstance(project_id, str):
+            try:
+                project = Project.objects.get(name__iexact=project_id)
             except Project.DoesNotExist:
                 pass
         
