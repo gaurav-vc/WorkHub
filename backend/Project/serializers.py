@@ -108,6 +108,11 @@ class ProjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'status', 'progress', 'department', 'template_type', 'dueDate', 'team', 'tasks', 'imported_tasks', 'created_by', 'created_by_name', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        return "Unknown"
+
 class SimpleTaskSerializer(serializers.ModelSerializer):
     assignee_detail = serializers.SerializerMethodField()
     assignees_detail = serializers.SerializerMethodField()
@@ -140,11 +145,6 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
 
 class ProjectListSerializer(ProjectSerializer):
     imported_tasks = SimpleTaskSerializer(source='api_tasks', many=True, read_only=True)
-
-    def get_created_by_name(self, obj):
-        if obj.created_by:
-            return obj.created_by.get_full_name() or obj.created_by.username
-        return "Unknown"
 
     def create(self, validated_data):
         # Extract fields to handle them cleanly
