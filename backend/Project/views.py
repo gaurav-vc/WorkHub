@@ -3,8 +3,14 @@ from rest_framework.response import Response
 from django.contrib.auth.models import User
 from django.utils import timezone
 from .models import Project
-from .serializers import ProjectSerializer
+from .serializers import ProjectSerializer, ProjectListSerializer
 from core.utils import get_visible_users
+from rest_framework.pagination import PageNumberPagination
+
+class StandardResultsSetPagination(PageNumberPagination):
+    page_size = 12
+    page_size_query_param = 'page_size'
+    max_page_size = 100
 
 @api_view(['GET', 'POST'])
 def project_list_create(request):
@@ -33,19 +39,28 @@ def project_list_create(request):
             scope_q |= Q(department__iexact=user_dept)
             
         q = base_q & scope_q
+        
+        search = request.GET.get('search')
+        status_filter = request.GET.get('status')
+        department_filter = request.GET.get('department')
+        
+        if search:
+            q &= (Q(name__icontains=search) | Q(description__icontains=search))
+        if status_filter and status_filter.lower() != 'all':
+            q &= Q(status__iexact=status_filter)
+        if department_filter and department_filter.lower() != 'all':
+            q &= Q(department__iexact=department_filter)
             
         projects = Project.objects.filter(q).exclude(name__iexact="General Workspace").prefetch_related(
             'api_tasks',
-            'api_tasks__comments', 'api_tasks__comments__user',
-            'api_tasks__chats', 'api_tasks__chats__user',
-            'api_tasks__attachments', 'api_tasks__attachments__uploaded_by',
-            'api_tasks__subtasks', 'api_tasks__subtasks__assigned_to',
-            'api_tasks__blocking_dependencies',
-            'api_tasks__checklists',
-            'api_tasks__assigned_to', 'api_tasks__created_by'
+            'api_tasks__assigned_to', 
+            'api_tasks__assignees'
         ).distinct().order_by('-created_at')
-        serializer = ProjectSerializer(projects, many=True)
-        return Response(serializer.data)
+        
+        paginator = StandardResultsSetPagination()
+        paginated_projects = paginator.paginate_queryset(projects, request)
+        serializer = ProjectListSerializer(paginated_projects, many=True)
+        return paginator.get_paginated_response(serializer.data)
 
     elif request.method == 'POST':
         if request.user and request.user.is_authenticated:
@@ -476,8 +491,14 @@ import json
 class TaskViewSet(TenantModelViewSet):
     from .models import Task
     queryset = Task.objects.all()
-    from .serializers import TaskSerializer
+    from .serializers import TaskSerializer, SimpleTaskSerializer
     serializer_class = TaskSerializer
+
+    def get_serializer_class(self):
+        from .serializers import SimpleTaskSerializer
+        if self.action == 'list':
+            return SimpleTaskSerializer
+        return self.serializer_class
     from role_base_access.permissions import RBACPermission
     permission_classes = [IsAuthenticated, RBACPermission]
     rbac_module = 'tasks-projects'
@@ -568,32 +589,123 @@ class TaskViewSet(TenantModelViewSet):
             project_scope_q
         ).distinct()
 
-    def list(self, request, *args, **kwargs):
-        queryset = self.filter_queryset(self.get_queryset())
-        
-        page = self.paginate_queryset(queryset)
-        if page is not None:
-            serializer = self.get_serializer(page, many=True)
-            return self.get_paginated_response(serializer.data)
+    pagination_class = StandardResultsSetPagination
 
-        serializer = self.get_serializer(queryset, many=True)
-        data = list(serializer.data)
-        
-        # Merge Boards Cards into the Tasks Context
+    def list(self, request, *args, **kwargs):
+        # Extract filters
+        search = request.query_params.get('search', '')
+        priority = request.query_params.get('priority', 'all')
+        status_filter = request.query_params.get('status', 'all')
+        assignee = request.query_params.get('assignee', '')
+        view_mode = request.query_params.get('view_mode', 'my_tasks')
+
+        queryset = self.filter_queryset(self.get_queryset())
         user = request.user
+
+        from django.db.models import Q
+        if search:
+            queryset = queryset.filter(Q(title__icontains=search) | Q(description__icontains=search))
+        if priority and priority != 'all':
+            queryset = queryset.filter(priority=priority)
+        if status_filter and status_filter != 'all':
+            if status_filter == 'todo':
+                queryset = queryset.filter(status__in=["pending", "open", "planning", "todo"])
+            elif status_filter == 'in-progress':
+                queryset = queryset.filter(status="in_progress")
+            elif status_filter == 'blocked':
+                queryset = queryset.filter(status__in=["delayed", "on_hold"])
+            elif status_filter == 'done':
+                queryset = queryset.filter(status__in=["completed", "done"])
+            else:
+                queryset = queryset.filter(status=status_filter)
+        
+        if assignee:
+            queryset = queryset.filter(assignees__id=assignee)
+            
+        if view_mode == 'my_tasks':
+            queryset = queryset.filter(Q(assignees=user) | Q(created_by=user))
+
+        queryset = queryset.distinct()
+        
+        # Fast query for Tasks (IDs and sorting fields only)
+        tasks_meta = list(queryset.values('id', 'created_at'))
+        for t in tasks_meta:
+            t['type'] = 'task'
+
+        cards_meta = []
+        # Fast query for Board Cards (IDs and sorting fields only)
         if user.is_authenticated:
             from boards.models import Card
-            from django.db.models import Q
             org = self.get_organization()
             global_access = self._has_global_access(user)
             
-            if global_access:
-                cards = Card.objects.filter(organization=org).select_related('column__board', 'assignee', 'created_by')
-            else:
-                cards = Card.objects.filter(Q(assignee=user) | Q(created_by=user), organization=org).select_related('column__board', 'assignee', 'created_by')
+            card_q = Q(organization=org)
+            if not global_access:
+                card_q &= (Q(assignee=user) | Q(created_by=user))
                 
-            for c in cards:
-                card_data = {
+            if search:
+                card_q &= (Q(title__icontains=search) | Q(description__icontains=search))
+            if priority and priority != 'all':
+                card_q &= Q(priority=priority)
+            if status_filter and status_filter != 'all':
+                if status_filter == 'todo':
+                    card_q &= Q(status__in=["pending", "todo", "open"])
+                elif status_filter == 'in-progress':
+                    card_q &= Q(status="in_progress")
+                elif status_filter == 'blocked':
+                    card_q &= Q(status__in=["delayed", "blocked", "on_hold"])
+                elif status_filter == 'done':
+                    card_q &= Q(status__in=["completed", "done"])
+                else:
+                    card_q &= Q(status=status_filter)
+            if assignee:
+                card_q &= Q(assignee__id=assignee)
+            if view_mode == 'my_tasks':
+                card_q &= (Q(assignee=user) | Q(created_by=user))
+                
+            cards = Card.objects.filter(card_q).distinct()
+            cards_meta = list(cards.values('id', 'created_at'))
+            for c in cards_meta:
+                c['type'] = 'card'
+
+        # Merge and sort the lightweight metadata list
+        combined_meta = tasks_meta + cards_meta
+        combined_meta.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
+
+        # Python-level pagination over lightweight list
+        paginate = request.query_params.get('paginate', 'true').lower() != 'false'
+        
+        if paginate:
+            paginator = StandardResultsSetPagination()
+            page_meta = paginator.paginate_queryset(combined_meta, request, view=self)
+            if page_meta is None:
+                page_meta = combined_meta
+        else:
+            paginator = None
+            page_meta = combined_meta
+
+        # Fetch exactly the 12 full objects using prefetch
+        task_ids = [m['id'] for m in page_meta if m['type'] == 'task']
+        card_ids = [m['id'] for m in page_meta if m['type'] == 'card']
+        
+        final_data = []
+
+        if task_ids:
+            # Chunk task_ids into batches of 900 to avoid SQLite limits
+            for i in range(0, len(task_ids), 900):
+                chunk_ids = task_ids[i:i + 900]
+                page_tasks = queryset.filter(id__in=chunk_ids)
+                serializer = self.get_serializer(page_tasks, many=True)
+                final_data.extend(serializer.data)
+
+        if card_ids:
+            from boards.models import Card
+            # Chunk card_ids as well
+            for i in range(0, len(card_ids), 900):
+                chunk_ids = card_ids[i:i + 900]
+                page_cards = Card.objects.filter(id__in=chunk_ids).select_related('column__board', 'assignee', 'created_by')
+                for c in page_cards:
+                    card_data = {
                     "id": f"board_card_{c.id}",
                     "title": c.title,
                     "description": c.description,
@@ -610,9 +722,15 @@ class TaskViewSet(TenantModelViewSet):
                     "created_by_name": c.created_by.get_full_name() or c.created_by.username if c.created_by else "System",
                     "comments": [], "attachments": [], "subtasks": [], "blocked_by": [], "checklists": [], "chats": []
                 }
-                data.append(card_data)
-                
-        return Response(data)
+                final_data.append(card_data)
+
+        # Re-sort the fetched items to preserve their exact order
+        final_data.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
+
+        if paginate and hasattr(paginator, 'page') and paginator.page:
+            return paginator.get_paginated_response(final_data)
+        
+        return Response(final_data)
 
     def create(self, request, *args, **kwargs):
         org = self.get_organization()

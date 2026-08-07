@@ -108,6 +108,39 @@ class ProjectSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'description', 'status', 'progress', 'department', 'template_type', 'dueDate', 'team', 'tasks', 'imported_tasks', 'created_by', 'created_by_name', 'created_at']
         read_only_fields = ['id', 'created_at']
 
+class SimpleTaskSerializer(serializers.ModelSerializer):
+    assignee_detail = serializers.SerializerMethodField()
+    assignees_detail = serializers.SerializerMethodField()
+    health_status = serializers.ReadOnlyField()
+    project = serializers.SerializerMethodField()
+    project_id = serializers.IntegerField(source='project.id', read_only=True)
+
+    class Meta:
+        model = Task
+        fields = [
+            'id', 'title', 'status', 'priority', 'due_date', 'due_time', 
+            'time_interval_minutes', 'assignee_detail', 'assignees_detail', 
+            'health_status', 'created_at', 'estimated_effort', 
+            'effort_unit', 'duration', 'project', 'project_id'
+        ]
+
+    def get_project(self, obj):
+        return obj.project.name if obj.project else "General Workspace"
+
+    def get_assignee_detail(self, obj):
+        if obj.assigned_to:
+            name = obj.assigned_to.get_full_name() or obj.assigned_to.username
+            return {"id": obj.assigned_to.id, "name": name, "email": obj.assigned_to.email}
+        return None
+
+    def get_assignees_detail(self, obj):
+        if hasattr(obj, 'assignees'):
+            return [{"id": a.id, "name": a.get_full_name() or a.username, "email": a.email} for a in obj.assignees.all()]
+        return []
+
+class ProjectListSerializer(ProjectSerializer):
+    imported_tasks = SimpleTaskSerializer(source='api_tasks', many=True, read_only=True)
+
     def get_created_by_name(self, obj):
         if obj.created_by:
             return obj.created_by.get_full_name() or obj.created_by.username

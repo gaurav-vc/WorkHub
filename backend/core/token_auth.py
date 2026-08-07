@@ -5,7 +5,7 @@ from rest_framework_simplejwt.tokens import UntypedToken
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from django.contrib.auth import get_user_model
 from channels.db import database_sync_to_async
-from jwt import decode as jwt_decode
+
 from django.conf import settings
 
 User = get_user_model()
@@ -13,9 +13,8 @@ User = get_user_model()
 @database_sync_to_async
 def get_user(token_string):
     try:
-        UntypedToken(token_string)
-        decoded_data = jwt_decode(token_string, settings.SECRET_KEY, algorithms=["HS256"])
-        user = User.objects.get(id=decoded_data['user_id'])
+        validated_token = UntypedToken(token_string)
+        user = User.objects.get(id=validated_token['user_id'])
         return user
     except (InvalidToken, TokenError, User.DoesNotExist, Exception) as e:
         return AnonymousUser()

@@ -57,13 +57,13 @@ class WorkspaceConsumer(AsyncWebsocketConsumer):
     @database_sync_to_async
     def get_user_org_id(self, user):
         org = None
-        profile = getattr(user, 'auth_profile', None)
-        if profile and getattr(profile, 'organization', None):
-            org = profile.organization
-        else:
-            emp_profile = getattr(user, 'res_employee', None)
-            if emp_profile and getattr(emp_profile, 'organization', None):
-                org = emp_profile.organization
+        try:
+            if hasattr(user, 'auth_profile') and user.auth_profile and getattr(user.auth_profile, 'organization', None):
+                org = user.auth_profile.organization
+            elif hasattr(user, 'res_employee') and user.res_employee and getattr(user.res_employee, 'organization', None):
+                org = user.res_employee.organization
+        except Exception:
+            pass
         return org.id if org else None
 
     async def connect(self):
