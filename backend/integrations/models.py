@@ -14,3 +14,25 @@ class Integration(TenantModel):
 
     def __str__(self):
         return self.name
+
+from django.conf import settings
+
+class MicrosoftCredentials(TenantModel):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='microsoft_credentials')
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    expires_at = models.DateTimeField()
+    
+class SyncedEmail(TenantModel):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='synced_emails')
+    message_id = models.CharField(max_length=255, unique=True)
+    subject = models.CharField(max_length=500, null=True, blank=True)
+    body_preview = models.TextField(null=True, blank=True)
+    sender_email = models.CharField(max_length=255, null=True, blank=True)
+    sender_name = models.CharField(max_length=255, null=True, blank=True)
+    received_date = models.DateTimeField(null=True, blank=True)
+    is_read = models.BooleanField(default=False)
+    web_link = models.URLField(max_length=1000, null=True, blank=True)
+
+    class Meta:
+        ordering = ['-received_date']
