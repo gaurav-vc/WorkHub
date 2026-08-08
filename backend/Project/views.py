@@ -258,6 +258,8 @@ def add_task(request, project_id):
     
     task_kwargs = {
         'project': project,
+        'organization': getattr(project, 'organization', None),
+        'site': getattr(project, 'site', None),
         'title': title,
         'status': status,
         'due_date': due_date,
@@ -425,7 +427,9 @@ def add_subtask(request, task_id):
             project=task.project,
             created_by=request.user if request.user.is_authenticated else None,
             assigned_to=request.user if request.user.is_authenticated else None,
-            status='pending'
+            status='pending',
+            organization=getattr(task, 'organization', None),
+            site=getattr(task, 'site', None)
         )
         return Response({"status": "subtask added"})
     return Response({"error": "title required"}, status=400)
@@ -620,10 +624,10 @@ class TaskViewSet(TenantModelViewSet):
                 queryset = queryset.filter(status=status_filter)
         
         if assignee:
-            queryset = queryset.filter(assignees__id=assignee)
+            queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
             
         if view_mode == 'my_tasks':
-            queryset = queryset.filter(Q(assignees=user) | Q(created_by=user))
+            queryset = queryset.filter(Q(assigned_to=user) | Q(assignees=user) | Q(created_by=user))
 
         queryset = queryset.distinct()
         
