@@ -57,11 +57,16 @@ def project_list_create(request):
             'api_tasks__assignees'
         ).distinct().order_by('-created_at')
         
-        paginator = StandardResultsSetPagination()
-        paginated_projects = paginator.paginate_queryset(projects, request)
-        serializer = ProjectListSerializer(paginated_projects, many=True)
-        return paginator.get_paginated_response(serializer.data)
-
+        paginate = request.GET.get('paginate', 'true').lower() != 'false'
+        
+        if paginate:
+            paginator = StandardResultsSetPagination()
+            paginated_projects = paginator.paginate_queryset(projects, request)
+            serializer = ProjectListSerializer(paginated_projects, many=True)
+            return paginator.get_paginated_response(serializer.data)
+        else:
+            serializer = ProjectListSerializer(projects, many=True)
+            return Response(serializer.data)
     elif request.method == 'POST':
         if request.user and request.user.is_authenticated:
             user = request.user
@@ -627,7 +632,9 @@ class TaskViewSet(TenantModelViewSet):
             queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
             
         if view_mode == 'my_tasks':
-            queryset = queryset.filter(Q(assigned_to=user) | Q(assignees=user) | Q(created_by=user))
+            assigned_q = Q(assigned_to=user) | Q(assignees=user)
+            unassigned_q = Q(created_by=user) & Q(assigned_to__isnull=True) & Q(assignees__isnull=True)
+            queryset = queryset.filter(assigned_q | unassigned_q)
 
         queryset = queryset.distinct()
         
@@ -665,7 +672,9 @@ class TaskViewSet(TenantModelViewSet):
             if assignee:
                 card_q &= Q(assignee__id=assignee)
             if view_mode == 'my_tasks':
-                card_q &= (Q(assignee=user) | Q(created_by=user))
+                card_assigned_q = Q(assignee=user)
+                card_unassigned_q = Q(created_by=user) & Q(assignee__isnull=True)
+                card_q &= (card_assigned_q | card_unassigned_q)
                 
             cards = Card.objects.filter(card_q).distinct()
             cards_meta = list(cards.values('id', 'created_at'))
