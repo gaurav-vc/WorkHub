@@ -1018,6 +1018,19 @@ class CurrentUserProfileView(APIView):
         try:
             from directory.models import Employee
             employee = Employee.objects.filter(email=user.email).first()
+            
+            if not employee:
+                employee = Employee(
+                    email=user.email,
+                    name=user.get_full_name() or user.username,
+                    initials=(user.get_full_name() or user.username)[:2].upper()
+                )
+                org_profile = getattr(user, 'org_profile', None)
+                if org_profile:
+                    employee.organization = org_profile.organization
+                    employee.site = org_profile.site
+                employee.save()
+                
             if employee:
                 date_of_birth = data.get('dob') or data.get('date_of_birth')
                 if date_of_birth:
@@ -1050,7 +1063,7 @@ class CurrentUserProfileView(APIView):
                         threading.Thread(target=lambda: call_command('check_birthdays')).start()
                         
                 return Response({'status': 'success'})
-            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Employee profile could not be created'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
