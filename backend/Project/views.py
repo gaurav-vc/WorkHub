@@ -328,15 +328,22 @@ def add_task(request, project_id):
         "project_progress": new_progress
     }, status=201)
 
+from django.db import transaction
+
 def recalculate_project_progress(project):
-    total_tasks = project.api_tasks.count()
-    if total_tasks == 0:
-        project.progress = 0
-    else:
-        done_tasks = project.api_tasks.filter(status__in=['done', 'completed']).count()
-        project.progress = int((done_tasks / total_tasks) * 100)
-    project.save(update_fields=['progress'])
-    return project.progress
+    with transaction.atomic():
+        # Lock the project row so rapid, simultaneous updates queue sequentially instead of crashing
+        locked_project = Project.objects.select_for_update().get(id=project.id)
+        
+        total_tasks = locked_project.api_tasks.count()
+        if total_tasks == 0:
+            locked_project.progress = 0
+        else:
+            done_tasks = locked_project.api_tasks.filter(status__in=['done', 'completed']).count()
+            locked_project.progress = int((done_tasks / total_tasks) * 100)
+            
+        locked_project.save(update_fields=['progress'])
+        return locked_project.progress
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 def update_task(request, task_id):
