@@ -23,8 +23,28 @@ class MicrosoftCredentials(TenantModel):
     refresh_token = models.TextField()
     expires_at = models.DateTimeField()
     
+class EmailAccount(TenantModel):
+    PROVIDER_CHOICES = [
+        ('microsoft', 'Microsoft Outlook'),
+        ('google', 'Google Gmail'),
+    ]
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='email_accounts')
+    provider = models.CharField(max_length=20, choices=PROVIDER_CHOICES)
+    account_email = models.EmailField() # Email address of the connected account
+    access_token = models.TextField()
+    refresh_token = models.TextField()
+    expires_at = models.DateTimeField()
+    is_active = models.BooleanField(default=True)
+    
+    class Meta:
+        unique_together = ('user', 'provider', 'account_email')
+
+    def __str__(self):
+        return f"{self.user} - {self.provider} - {self.account_email}"
+
 class SyncedEmail(TenantModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='synced_emails')
+    account = models.ForeignKey(EmailAccount, on_delete=models.CASCADE, related_name='emails', null=True, blank=True)
     message_id = models.CharField(max_length=255, unique=True)
     subject = models.CharField(max_length=500, null=True, blank=True)
     body_preview = models.TextField(null=True, blank=True)

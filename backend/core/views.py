@@ -44,12 +44,14 @@ class TenantModelViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer, **kwargs):
         org = self.get_organization()
         user = self.request.user
-        profile = getattr(user, 'auth_profile', None)
         
         if not org:
             raise PermissionDenied("You must belong to an organization to create records.")
             
-        serializer.save(organization=org, **kwargs)
+        from core.tenant import get_current_site
+        site = get_current_site()
+            
+        serializer.save(organization=org, site=site, **kwargs)
 
 from rest_framework.response import Response
 from rest_framework.decorators import api_view

@@ -306,18 +306,7 @@ Team WorkHub
                     emp.role = data['role']
                 if 'status' in data:
                     emp.is_active = str(data.get('status', 'true')).lower() == 'true'
-                if request.FILES.get('photo'):
-                    emp.photo = request.FILES['photo']
                 emp.save()
-                
-                # DYNAMIC TRIGGER: If their birthday is today, instantly trigger the birthday routine!
-                if getattr(emp, 'date_of_birth', None):
-                    from datetime import date
-                    dob = emp.date_of_birth
-                    if dob.month == date.today().month and dob.day == date.today().day:
-                        import threading
-                        from django.core.management import call_command
-                        threading.Thread(target=lambda: call_command('check_birthdays')).start()
                         
             else:
                 EmployeeProfile.objects.create(
@@ -328,6 +317,51 @@ Team WorkHub
                 )
         except Exception:
             pass
+            
+        # Update Directory Employee
+        try:
+            from directory.models import Employee
+            dir_emp = Employee.objects.filter(email=user.email).first()
+            if dir_emp:
+                if 'phone' in data:
+                    dir_emp.phone = data.get('phone', '')
+                if 'location' in data:
+                    dir_emp.location = data.get('location', '')
+                if 'skills' in data:
+                    skills_raw = data.get('skills', '')
+                    dir_emp.skills = [s.strip() for s in skills_raw.split(',') if s.strip()] if skills_raw else []
+                
+                date_of_birth = data.get('dob') or data.get('date_of_birth')
+                if date_of_birth:
+                    try:
+                        from datetime import datetime
+                        if '-' in date_of_birth:
+                            parts = date_of_birth.split('-')
+                            if len(parts[0]) == 4:
+                                dob = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+                            else:
+                                dob = datetime.strptime(date_of_birth, '%d-%m-%Y').date()
+                            dir_emp.date_of_birth = dob
+                    except Exception:
+                        pass
+                
+                if str(data.get('remove_photo', 'false')).lower() == 'true':
+                    dir_emp.photo = None
+                elif request.FILES.get('photo'):
+                    dir_emp.photo = request.FILES['photo']
+                    
+                dir_emp.save()
+                
+                # DYNAMIC TRIGGER: If their birthday is today, instantly trigger the birthday routine!
+                if dir_emp.date_of_birth:
+                    from datetime import date
+                    dob = dir_emp.date_of_birth
+                    if dob.month == date.today().month and dob.day == date.today().day:
+                        import threading
+                        from django.core.management import call_command
+                        threading.Thread(target=lambda: call_command('check_birthdays')).start()
+        except Exception as e:
+            print(f"Error updating directory employee: {e}")
             
         # Ensure organization mapping is maintained during update
         try:

@@ -959,6 +959,8 @@ class CurrentUserProfileView(APIView):
         phone = ""
         location = ""
         skills = []
+        dob = ""
+        photo_url = ""
         try:
             from directory.models import Employee
             employee = Employee.objects.filter(email=user.email).first()
@@ -971,6 +973,10 @@ class CurrentUserProfileView(APIView):
                     role = employee.role
                 if employee.department:
                     department = employee.department
+                if employee.date_of_birth:
+                    dob = employee.date_of_birth.strftime('%Y-%m-%d')
+                if employee.photo:
+                    photo_url = employee.photo.url
         except Exception:
             pass
             
@@ -1000,8 +1006,53 @@ class CurrentUserProfileView(APIView):
             "phone": phone,
             "location": location,
             "skills": skills,
+            "dob": dob,
+            "photo_url": photo_url,
             "is_superuser": user.is_superuser
         })
+
+    def patch(self, request):
+        user = request.user
+        data = request.data
+
+        try:
+            from directory.models import Employee
+            employee = Employee.objects.filter(email=user.email).first()
+            if employee:
+                date_of_birth = data.get('dob') or data.get('date_of_birth')
+                if date_of_birth:
+                    try:
+                        from datetime import datetime
+                        if '-' in date_of_birth:
+                            parts = date_of_birth.split('-')
+                            if len(parts[0]) == 4:
+                                dob = datetime.strptime(date_of_birth, '%Y-%m-%d').date()
+                            else:
+                                dob = datetime.strptime(date_of_birth, '%d-%m-%Y').date()
+                            employee.date_of_birth = dob
+                    except Exception:
+                        pass
+                
+                if str(data.get('remove_photo', 'false')).lower() == 'true':
+                    employee.photo = None
+                elif request.FILES.get('photo'):
+                    employee.photo = request.FILES['photo']
+                    
+                employee.save()
+                
+                # DYNAMIC TRIGGER: If their birthday is today, instantly trigger the birthday routine!
+                if employee.date_of_birth:
+                    from datetime import date
+                    dob = employee.date_of_birth
+                    if dob.month == date.today().month and dob.day == date.today().day:
+                        import threading
+                        from django.core.management import call_command
+                        threading.Thread(target=lambda: call_command('check_birthdays')).start()
+                        
+                return Response({'status': 'success'})
+            return Response({'error': 'Employee profile not found'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
 class ChangePasswordView(APIView):
     permission_classes = (IsAuthenticated,)

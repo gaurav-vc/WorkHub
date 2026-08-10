@@ -241,6 +241,10 @@ GEMINI_API_KEY = os.environ.get('GEMINI_API_KEY', '')
 AZURE_CLIENT_ID = os.environ.get('AZURE_CLIENT_ID', '')
 AZURE_CLIENT_SECRET = os.environ.get('AZURE_CLIENT_SECRET', '')
 
+# Google OAuth
+GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
+GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+
 # Max upload limits for 20MB file support
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20971520
 FILE_UPLOAD_MAX_MEMORY_SIZE = 20971520

@@ -12,9 +12,9 @@ class IntegrationsConfig(AppConfig):
             return
             
         from apscheduler.schedulers.background import BackgroundScheduler
-        from .tasks import sync_microsoft_emails
+        from .tasks import sync_all_emails
         
         scheduler = BackgroundScheduler()
         # Run every 2 minutes
-        scheduler.add_job(sync_microsoft_emails, 'interval', minutes=2)
+        scheduler.add_job(sync_all_emails, 'interval', minutes=2)
         scheduler.start()
