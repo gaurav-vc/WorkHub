@@ -120,14 +120,23 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     project = serializers.SerializerMethodField()
     project_id = serializers.IntegerField(source='project.id', read_only=True)
 
+    created_by_name = serializers.SerializerMethodField()
+
     class Meta:
         model = Task
         fields = [
             'id', 'title', 'status', 'priority', 'due_date', 'due_time', 
             'time_interval_minutes', 'assignee_detail', 'assignees_detail', 
             'health_status', 'created_at', 'estimated_effort', 
-            'effort_unit', 'duration', 'project', 'project_id'
+            'effort_unit', 'duration', 'project', 'project_id', 'created_by_name'
         ]
+
+    def get_created_by_name(self, obj):
+        if obj.created_by:
+            return obj.created_by.get_full_name() or obj.created_by.username
+        if getattr(obj, 'project', None) and getattr(obj.project, 'created_by', None):
+            return obj.project.created_by.get_full_name() or obj.project.created_by.username
+        return "System"
 
     def get_project(self, obj):
         return obj.project.name if obj.project else "General Workspace"

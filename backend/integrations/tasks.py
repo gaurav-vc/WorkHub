@@ -24,10 +24,13 @@ def sync_all_emails(specific_account_id=None, user_id=None):
             if not refreshed:
                 continue
                 
-        if account.provider == 'microsoft':
-            sync_microsoft_account(account)
-        elif account.provider == 'google':
-            sync_google_account(account)
+        # Ensure any records created during this sync inherit the account's tenant context
+        from core.tenant import tenant_context
+        with tenant_context(organization_id=account.organization_id, site_id=account.site_id):
+            if account.provider == 'microsoft':
+                sync_microsoft_account(account)
+            elif account.provider == 'google':
+                sync_google_account(account)
 
 def refresh_token(account):
     if account.provider == 'microsoft':
@@ -88,20 +91,24 @@ def sync_microsoft_account(account):
             is_read = msg.get('isRead', False)
             web_link = msg.get('webLink')
             
-            SyncedEmail.objects.update_or_create(
-                message_id=message_id,
-                user=account.user,
-                defaults={
-                    'account': account,
-                    'subject': subject,
-                    'body_preview': body_preview,
-                    'sender_name': sender_name,
-                    'sender_email': sender_email,
-                    'received_date': received_date,
-                    'is_read': is_read,
-                    'web_link': web_link,
-                }
-            )
+            from django.db import IntegrityError, OperationalError
+            try:
+                SyncedEmail.objects.update_or_create(
+                    message_id=message_id,
+                    user=account.user,
+                    defaults={
+                        'account': account,
+                        'subject': subject,
+                        'body_preview': body_preview,
+                        'sender_name': sender_name,
+                        'sender_email': sender_email,
+                        'received_date': received_date,
+                        'is_read': is_read,
+                        'web_link': web_link,
+                    }
+                )
+            except (IntegrityError, OperationalError) as e:
+                logger.warning(f"Skipping email sync for {message_id} due to DB lock or constraint: {e}")
     else:
         logger.error(f"Failed to fetch Microsoft emails for account {account.id}")
 
@@ -147,19 +154,23 @@ def sync_google_account(account):
                 
                 web_link = f"https://mail.google.com/mail/u/0/#inbox/{msg_id}"
                 
-                SyncedEmail.objects.update_or_create(
-                    message_id=msg_id,
-                    user=account.user,
-                    defaults={
-                        'account': account,
-                        'subject': subject,
-                        'body_preview': body_preview,
-                        'sender_name': sender_name,
-                        'sender_email': sender_email,
-                        'received_date': received_date,
-                        'is_read': is_read,
-                        'web_link': web_link,
-                    }
-                )
+                from django.db import IntegrityError, OperationalError
+                try:
+                    SyncedEmail.objects.update_or_create(
+                        message_id=msg_id,
+                        user=account.user,
+                        defaults={
+                            'account': account,
+                            'subject': subject,
+                            'body_preview': body_preview,
+                            'sender_name': sender_name,
+                            'sender_email': sender_email,
+                            'received_date': received_date,
+                            'is_read': is_read,
+                            'web_link': web_link,
+                        }
+                    )
+                except (IntegrityError, OperationalError) as e:
+                    logger.warning(f"Skipping email sync for {msg_id} due to DB lock or constraint: {e}")
     else:
         logger.error(f"Failed to fetch Google emails for account {account.id}")

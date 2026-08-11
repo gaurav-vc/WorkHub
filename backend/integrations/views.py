@@ -30,7 +30,17 @@ def microsoft_login(request):
     if 'localhost' not in redirect_uri and '127.0.0.1' not in redirect_uri:
         redirect_uri = redirect_uri.replace('http://', 'https://')
 
-    state = request.user.id
+    frontend_base = request.headers.get('Origin')
+    if not frontend_base:
+        referer = request.headers.get('Referer')
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            frontend_base = f"{parsed.scheme}://{parsed.netloc}"
+    if not frontend_base:
+        frontend_base = "http://localhost:8080" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live"
+        
+    state = f"{request.user.id}|{frontend_base}"
     
     auth_url = (
         "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
@@ -39,7 +49,7 @@ def microsoft_login(request):
         f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
         f"&response_mode=query"
         f"&scope=offline_access%20User.Read%20Mail.Read%20Mail.ReadWrite"
-        f"&state={state}"
+        f"&state={urllib.parse.quote(state)}"
     )
     return Response({"url": auth_url})
 
@@ -51,6 +61,11 @@ def microsoft_callback(request):
     
     if not code or not state:
         return Response({"error": "Missing code or state"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    state = urllib.parse.unquote(state)
+    state_parts = state.split('|')
+    user_id = state_parts[0]
+    frontend_base = state_parts[1] if len(state_parts) > 1 else ("http://localhost:5173" if 'localhost' in request.build_absolute_uri() else "https://workhub.vibesandbox.live")
         
     client_id = getattr(settings, 'AZURE_CLIENT_ID', None)
     client_secret = getattr(settings, 'AZURE_CLIENT_SECRET', None)
@@ -79,7 +94,7 @@ def microsoft_callback(request):
         
         from authentication.models import User
         try:
-            user = User.objects.get(id=state)
+            user = User.objects.get(id=user_id)
             
             # Get user profile email from MS Graph to save in EmailAccount
             headers = {'Authorization': f'Bearer {access_token}', 'Accept': 'application/json'}
@@ -88,24 +103,32 @@ def microsoft_callback(request):
             if profile_res.status_code == 200:
                 account_email = profile_res.json().get('userPrincipalName', user.email)
             
-            # Check limit
-            if EmailAccount.objects.filter(user=user).count() >= 15:
-                # Silently ignore or we could return error, but it's a callback so redirect is better
-                pass
-            else:
-                EmailAccount.objects.update_or_create(
-                    user=user,
-                    provider='microsoft',
-                    account_email=account_email,
-                    defaults={
-                        'access_token': access_token,
-                        'refresh_token': refresh_token,
-                        'expires_at': expires_at,
-                    }
-                )
+            # Use tenant context to ensure the record belongs to the user's organization and site
+            org_id = None
+            site_id = None
+            if hasattr(user, 'org_profile'):
+                org_id = user.org_profile.organization_id
+                site_id = user.org_profile.site_id
+                
+            from core.tenant import tenant_context
+            with tenant_context(organization_id=org_id, site_id=site_id):
+                # Check limit
+                if EmailAccount.objects.filter(user=user).count() >= 15:
+                    # Silently ignore or we could return error, but it's a callback so redirect is better
+                    pass
+                else:
+                    EmailAccount.objects.update_or_create(
+                        user=user,
+                        provider='microsoft',
+                        account_email=account_email,
+                        defaults={
+                            'access_token': access_token,
+                            'refresh_token': refresh_token,
+                            'expires_at': expires_at,
+                        }
+                    )
             
-            frontend_url = "http://localhost:5173/inbox" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live/inbox"
-            return redirect(frontend_url)
+            return redirect(f"{frontend_base}/inbox")
         except User.DoesNotExist:
             return Response({"error": "Invalid state/user"}, status=status.HTTP_400_BAD_REQUEST)
             
@@ -122,7 +145,17 @@ def google_login(request):
     if 'localhost' not in redirect_uri and '127.0.0.1' not in redirect_uri:
         redirect_uri = redirect_uri.replace('http://', 'https://')
 
-    state = request.user.id
+    frontend_base = request.headers.get('Origin')
+    if not frontend_base:
+        referer = request.headers.get('Referer')
+        if referer:
+            from urllib.parse import urlparse
+            parsed = urlparse(referer)
+            frontend_base = f"{parsed.scheme}://{parsed.netloc}"
+    if not frontend_base:
+        frontend_base = "http://localhost:5173" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live"
+        
+    state = f"{request.user.id}|{frontend_base}"
     
     auth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
@@ -132,7 +165,7 @@ def google_login(request):
         f"&access_type=offline"
         f"&prompt=consent"
         f"&scope=https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"
-        f"&state={state}"
+        f"&state={urllib.parse.quote(state)}"
     )
     return Response({"url": auth_url})
 
@@ -144,6 +177,11 @@ def google_callback(request):
     
     if not code or not state:
         return Response({"error": "Missing code or state"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    state = urllib.parse.unquote(state)
+    state_parts = state.split('|')
+    user_id = state_parts[0]
+    frontend_base = state_parts[1] if len(state_parts) > 1 else ("http://localhost:5173" if 'localhost' in request.build_absolute_uri() else "https://workhub.vibesandbox.live")
         
     client_id = getattr(settings, 'GOOGLE_CLIENT_ID', None)
     client_secret = getattr(settings, 'GOOGLE_CLIENT_SECRET', None)
@@ -172,7 +210,7 @@ def google_callback(request):
         
         from authentication.models import User
         try:
-            user = User.objects.get(id=state)
+            user = User.objects.get(id=user_id)
             
             # Fetch user email from Google
             headers = {'Authorization': f'Bearer {access_token}'}
@@ -181,25 +219,33 @@ def google_callback(request):
             if profile_res.status_code == 200:
                 account_email = profile_res.json().get('email', user.email)
             
-            # Check limit
-            if EmailAccount.objects.filter(user=user).count() >= 15:
-                pass
-            else:
-                account, created = EmailAccount.objects.update_or_create(
-                    user=user,
-                    provider='google',
-                    account_email=account_email,
-                    defaults={
-                        'access_token': access_token,
-                        'expires_at': expires_at,
-                    }
-                )
-                if refresh_token:
-                    account.refresh_token = refresh_token
-                    account.save()
+            # Use tenant context to ensure the record belongs to the user's organization and site
+            org_id = None
+            site_id = None
+            if hasattr(user, 'org_profile'):
+                org_id = user.org_profile.organization_id
+                site_id = user.org_profile.site_id
+                
+            from core.tenant import tenant_context
+            with tenant_context(organization_id=org_id, site_id=site_id):
+                # Check limit
+                if EmailAccount.objects.filter(user=user).count() >= 15:
+                    pass
+                else:
+                    account, created = EmailAccount.objects.update_or_create(
+                        user=user,
+                        provider='google',
+                        account_email=account_email,
+                        defaults={
+                            'access_token': access_token,
+                            'expires_at': expires_at,
+                        }
+                    )
+                    if refresh_token:
+                        account.refresh_token = refresh_token
+                        account.save()
             
-            frontend_url = "http://localhost:5173/inbox" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live/inbox"
-            return redirect(frontend_url)
+            return redirect(f"{frontend_base}/inbox")
         except User.DoesNotExist:
             return Response({"error": "Invalid state/user"}, status=status.HTTP_400_BAD_REQUEST)
             

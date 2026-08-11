@@ -519,6 +519,10 @@ class TaskViewSet(TenantModelViewSet):
     permission_classes = [IsAuthenticated, RBACPermission]
     rbac_module = 'tasks-projects'
 
+    def perform_create(self, serializer, **kwargs):
+        kwargs['created_by'] = self.request.user
+        super().perform_create(serializer, **kwargs)
+
     def _has_global_access(self, user):
         if user.is_superuser:
             return True
