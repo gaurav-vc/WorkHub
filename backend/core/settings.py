@@ -244,6 +244,12 @@ AZURE_CLIENT_SECRET = os.environ.get('AZURE_CLIENT_SECRET', '')
 # Google OAuth
 GOOGLE_CLIENT_ID = os.environ.get('GOOGLE_CLIENT_ID', '')
 GOOGLE_CLIENT_SECRET = os.environ.get('GOOGLE_CLIENT_SECRET', '')
+# App-level refresh token for generating Google Meet links without user OAuth
+GOOGLE_ADMIN_REFRESH_TOKEN = os.environ.get('GOOGLE_ADMIN_REFRESH_TOKEN', '')
+
+# Azure / Microsoft OAuth
+AZURE_TENANT_ID = os.environ.get('AZURE_TENANT_ID', '')
+
 
 # Max upload limits for 20MB file support
 DATA_UPLOAD_MAX_MEMORY_SIZE = 20971520

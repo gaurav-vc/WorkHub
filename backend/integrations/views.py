@@ -164,7 +164,7 @@ def google_login(request):
         f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
         f"&access_type=offline"
         f"&prompt=consent"
-        f"&scope=https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email"
+        f"&scope=https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/calendar.events"
         f"&state={urllib.parse.quote(state)}"
     )
     return Response({"url": auth_url})

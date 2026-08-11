@@ -730,24 +730,23 @@ class TaskViewSet(TenantModelViewSet):
                 page_cards = Card.objects.filter(id__in=chunk_ids).select_related('column__board', 'assignee', 'created_by')
                 for c in page_cards:
                     card_data = {
-                    "id": f"board_card_{c.id}",
-                    "title": c.title,
-                    "description": c.description,
-                    "status": c.status,
-                    "priority": c.priority or "P3",
-                    "due_date": c.due_date.isoformat() if c.due_date else None,
-                    "created_at": c.created_at.isoformat() if c.created_at else None,
-                    "project": f"Board: {c.column.board.title}" if getattr(c, 'column', None) and getattr(c.column, 'board', None) else "Board Task",
-                    "project_id": getattr(c.column.board, 'id', None) if getattr(c, 'column', None) else None,
-                    "task_type": "board",
-                    "assignee_detail": {
-                        "id": c.assignee.id, "name": c.assignee.get_full_name() or c.assignee.username, "email": c.assignee.email
-                    } if c.assignee else None,
-                    "created_by_name": c.created_by.get_full_name() or c.created_by.username if c.created_by else "System",
-                    "comments": [], "attachments": [], "subtasks": [], "blocked_by": [], "checklists": [], "chats": []
-                }
-                final_data.append(card_data)
-
+                        "id": f"board_card_{c.id}",
+                        "title": c.title,
+                        "description": c.description,
+                        "status": c.status,
+                        "priority": c.priority or "P3",
+                        "due_date": c.due_date.isoformat() if c.due_date else None,
+                        "created_at": c.created_at.isoformat() if c.created_at else None,
+                        "project": f"Board: {c.column.board.title}" if getattr(c, 'column', None) and getattr(c.column, 'board', None) else "Board Task",
+                        "project_id": getattr(c.column.board, 'id', None) if getattr(c, 'column', None) else None,
+                        "task_type": "board",
+                        "assignee_detail": {
+                            "id": c.assignee.id, "name": c.assignee.get_full_name() or c.assignee.username, "email": c.assignee.email
+                        } if c.assignee else None,
+                        "created_by_name": c.created_by.get_full_name() or c.created_by.username if c.created_by else "System",
+                        "comments": [], "attachments": [], "subtasks": [], "blocked_by": [], "checklists": [], "chats": []
+                    }
+                    final_data.append(card_data)
         # Re-sort the fetched items to preserve their exact order
         final_data.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
 

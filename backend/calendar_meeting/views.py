@@ -421,24 +421,216 @@ def get_all_employees(request):
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
 def generate_meeting_link(request):
+    """
+    Generate a real meeting link using APP-LEVEL credentials (no user OAuth needed).
+
+    Strategy per platform:
+    - Google Meet  : Uses GOOGLE_ADMIN_REFRESH_TOKEN from .env (a one-time admin token).
+                     Falls back to the requesting user's connected Google account.
+    - Microsoft Teams: Uses AZURE_CLIENT_ID + AZURE_CLIENT_SECRET + AZURE_TENANT_ID
+                       via client_credentials flow (app-level, no user login required).
+                       Falls back to the requesting user's connected Microsoft account.
+    - Jitsi Meet   : Always works; real video rooms with zero credentials needed.
+    """
     import uuid
-    import random
-    import string
+    import requests as req_lib
+    from datetime import timedelta
+
     platform = request.data.get('platform', 'Google Meet')
-    
-    if platform == 'Microsoft Teams':
-        meeting_id = str(uuid.uuid4())
-        link = f"https://teams.microsoft.com/l/meetup-join/19:meeting_{meeting_id}@thread.v2/0?context=%7b%22Tid%22%3a%22dummy%22%2c%22Oid%22%3a%22dummy%22%7d"
-    elif platform == 'Google Meet':
-        chars = string.ascii_lowercase
-        p1 = ''.join(random.choice(chars) for _ in range(3))
-        p2 = ''.join(random.choice(chars) for _ in range(4))
-        p3 = ''.join(random.choice(chars) for _ in range(3))
-        link = f"https://meet.google.com/{p1}-{p2}-{p3}"
+    user = request.user
+    now = timezone.now()
+
+    # ─────────────────────────── GOOGLE MEET ────────────────────────────
+    if platform == 'Google Meet':
+        access_token = None
+
+        # 1. Try app-level admin token (works for ALL users, no personal account needed)
+        admin_refresh_token = getattr(settings, 'GOOGLE_ADMIN_REFRESH_TOKEN', '')
+        if admin_refresh_token:
+            try:
+                refresh_res = req_lib.post(
+                    'https://oauth2.googleapis.com/token',
+                    data={
+                        'client_id': getattr(settings, 'GOOGLE_CLIENT_ID', ''),
+                        'client_secret': getattr(settings, 'GOOGLE_CLIENT_SECRET', ''),
+                        'refresh_token': admin_refresh_token,
+                        'grant_type': 'refresh_token',
+                    }
+                )
+                if refresh_res.status_code == 200:
+                    access_token = refresh_res.json().get('access_token')
+                else:
+                    print(f"[Google Meet] Admin refresh token failed: {refresh_res.text}")
+            except Exception as e:
+                print(f"[Google Meet] Admin token error: {e}")
+
+        # 2. Fall back to user's connected Google account
+        if not access_token:
+            try:
+                from integrations.models import EmailAccount
+                account = EmailAccount.objects.filter(
+                    user=user, provider='google', is_active=True
+                ).order_by('-id').first()
+                if account:
+                    if account.expires_at <= now:
+                        r = req_lib.post(
+                            'https://oauth2.googleapis.com/token',
+                            data={
+                                'client_id': getattr(settings, 'GOOGLE_CLIENT_ID', ''),
+                                'client_secret': getattr(settings, 'GOOGLE_CLIENT_SECRET', ''),
+                                'refresh_token': account.refresh_token,
+                                'grant_type': 'refresh_token',
+                            }
+                        )
+                        if r.status_code == 200:
+                            d = r.json()
+                            access_token = d['access_token']
+                            account.access_token = access_token
+                            account.expires_at = now + timedelta(seconds=d.get('expires_in', 3600))
+                            account.save(update_fields=['access_token', 'expires_at'])
+                    else:
+                        access_token = account.access_token
+            except Exception as e:
+                print(f"[Google Meet] User account error: {e}")
+
+        # 3. If we have a valid token, create a real Meet link via Calendar API
+        if access_token:
+            try:
+                event_body = {
+                    "summary": "WorkHub Meeting",
+                    "start": {"dateTime": now.isoformat(), "timeZone": "UTC"},
+                    "end": {"dateTime": (now + timedelta(hours=1)).isoformat(), "timeZone": "UTC"},
+                    "conferenceData": {
+                        "createRequest": {
+                            "requestId": uuid.uuid4().hex,
+                            "conferenceSolutionKey": {"type": "hangoutsMeet"}
+                        }
+                    }
+                }
+                cal_res = req_lib.post(
+                    'https://www.googleapis.com/calendar/v3/calendars/primary/events',
+                    params={'conferenceDataVersion': 1},
+                    headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
+                    json=event_body
+                )
+                if cal_res.status_code in (200, 201):
+                    cal_data = cal_res.json()
+                    meet_link = cal_data.get('hangoutLink')
+                    if not meet_link:
+                        for ep in cal_data.get('conferenceData', {}).get('entryPoints', []):
+                            if ep.get('entryPointType') == 'video':
+                                meet_link = ep.get('uri')
+                                break
+                    if meet_link:
+                        return Response({"link": meet_link, "source": "google_calendar_api"})
+                else:
+                    print(f"[Google Meet] Calendar API error {cal_res.status_code}: {cal_res.text}")
+            except Exception as e:
+                print(f"[Google Meet] Calendar API exception: {e}")
+
+        # 4. Fallback to real Jitsi room
+        link = f"https://meet.jit.si/WorkHub-{uuid.uuid4().hex[:10]}"
+        return Response({"link": link, "source": "jitsi_fallback"})
+
+    # ─────────────────────────── MICROSOFT TEAMS ────────────────────────
+    elif platform == 'Microsoft Teams':
+
+        # 1. App-level client_credentials flow (no user login required)
+        tenant_id = getattr(settings, 'AZURE_TENANT_ID', '')
+        if tenant_id:
+            try:
+                app_token_res = req_lib.post(
+                    f'https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token',
+                    data={
+                        'client_id': getattr(settings, 'AZURE_CLIENT_ID', ''),
+                        'client_secret': getattr(settings, 'AZURE_CLIENT_SECRET', ''),
+                        'grant_type': 'client_credentials',
+                        'scope': 'https://graph.microsoft.com/.default',
+                    }
+                )
+                if app_token_res.status_code == 200:
+                    app_access_token = app_token_res.json().get('access_token')
+                    if app_access_token:
+                        # App-only tokens need a real user ID (not /me)
+                        users_res = req_lib.get(
+                            'https://graph.microsoft.com/v1.0/users',
+                            params={'$top': 1, '$select': 'id'},
+                            headers={'Authorization': f'Bearer {app_access_token}'}
+                        )
+                        if users_res.status_code == 200 and users_res.json().get('value'):
+                            app_user_id = users_res.json()['value'][0]['id']
+                            start_dt = now.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                            end_dt = (now + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                            graph_res = req_lib.post(
+                                f'https://graph.microsoft.com/v1.0/users/{app_user_id}/onlineMeetings',
+                                headers={'Authorization': f'Bearer {app_access_token}', 'Content-Type': 'application/json'},
+                                json={"subject": "WorkHub Meeting", "startDateTime": start_dt, "endDateTime": end_dt}
+                            )
+                            if graph_res.status_code in (200, 201):
+                                join_url = graph_res.json().get('joinWebUrl', '')
+                                if join_url:
+                                    return Response({"link": join_url, "source": "teams_app_credentials"})
+                            else:
+                                print(f"[Teams App] Graph error {graph_res.status_code}: {graph_res.text}")
+                else:
+                    print(f"[Teams] App-level token failed: {app_token_res.text}")
+            except Exception as e:
+                print(f"[Teams] App-level auth error: {e}")
+
+        # 2. Fall back to user's connected Microsoft account
+        try:
+            from integrations.models import EmailAccount
+            account = EmailAccount.objects.filter(
+                user=user, provider='microsoft', is_active=True
+            ).order_by('-id').first()
+            if account:
+                access_token = account.access_token
+                if account.expires_at <= now:
+                    r = req_lib.post(
+                        'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+                        data={
+                            'client_id': getattr(settings, 'AZURE_CLIENT_ID', ''),
+                            'client_secret': getattr(settings, 'AZURE_CLIENT_SECRET', ''),
+                            'refresh_token': account.refresh_token,
+                            'grant_type': 'refresh_token',
+                            'scope': 'offline_access OnlineMeetings.ReadWrite',
+                        }
+                    )
+                    if r.status_code == 200:
+                        d = r.json()
+                        access_token = d['access_token']
+                        account.access_token = access_token
+                        account.expires_at = now + timedelta(seconds=d.get('expires_in', 3600))
+                        account.save(update_fields=['access_token', 'expires_at'])
+                    else:
+                        access_token = None
+                if access_token:
+                    start_dt = now.strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                    end_dt = (now + timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S') + 'Z'
+                    graph_res = req_lib.post(
+                        'https://graph.microsoft.com/v1.0/me/onlineMeetings',
+                        headers={'Authorization': f'Bearer {access_token}', 'Content-Type': 'application/json'},
+                        json={"subject": "WorkHub Meeting", "startDateTime": start_dt, "endDateTime": end_dt}
+                    )
+                    if graph_res.status_code in (200, 201):
+                        join_url = graph_res.json().get('joinWebUrl', '')
+                        if join_url:
+                            return Response({"link": join_url, "source": "teams_graph_api"})
+                    else:
+                        print(f"[Teams User] Graph error {graph_res.status_code}: {graph_res.text}")
+        except Exception as e:
+            print(f"[Teams] User account error: {e}")
+
+        # 3. Fallback to real Jitsi room
+        link = f"https://meet.jit.si/WorkHub-{uuid.uuid4().hex[:10]}"
+        return Response({"link": link, "source": "jitsi_fallback"})
+
+    # ─────────────────────────── JITSI MEET ─────────────────────────────
     elif platform == 'Jitsi Meet':
         link = f"https://meet.jit.si/WorkHub-{uuid.uuid4().hex[:8]}"
+        return Response({"link": link, "source": "jitsi"})
+
     else:
         link = f"https://meet.jit.si/WorkHub-{uuid.uuid4().hex[:8]}"
-        
-    return Response({"link": link})
+        return Response({"link": link, "source": "jitsi"})
 
