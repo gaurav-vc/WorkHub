@@ -618,6 +618,8 @@ class TaskViewSet(TenantModelViewSet):
         status_filter = request.query_params.get('status', 'all')
         assignee = request.query_params.get('assignee', '')
         view_mode = request.query_params.get('view_mode', 'my_tasks')
+        start_date = request.query_params.get('start_date')
+        end_date = request.query_params.get('end_date')
 
         queryset = self.filter_queryset(self.get_queryset())
         user = request.user
@@ -646,6 +648,27 @@ class TaskViewSet(TenantModelViewSet):
             assigned_q = Q(assigned_to=user) | Q(assignees=user)
             unassigned_q = Q(created_by=user) & Q(assigned_to__isnull=True) & Q(assignees__isnull=True)
             queryset = queryset.filter(assigned_q | unassigned_q)
+
+        if start_date:
+            print(f"DEBUG: Filtering with start_date={start_date}")
+            try:
+                from datetime import datetime, timedelta
+                from django.utils import timezone
+                start_dt = datetime.strptime(start_date.split('T')[0], '%Y-%m-%d')
+                start_dt = timezone.make_aware(start_dt)
+                queryset = queryset.filter(created_at__gte=start_dt)
+            except Exception as e:
+                print(f"Error parsing start_date: {e}")
+                
+        if end_date:
+            try:
+                from datetime import datetime, timedelta
+                from django.utils import timezone
+                end_dt = datetime.strptime(end_date.split('T')[0], '%Y-%m-%d')
+                end_dt = timezone.make_aware(end_dt) + timedelta(days=1, microseconds=-1)
+                queryset = queryset.filter(created_at__lte=end_dt)
+            except Exception as e:
+                print(f"Error parsing end_date: {e}")
 
         queryset = queryset.distinct()
         
@@ -686,6 +709,25 @@ class TaskViewSet(TenantModelViewSet):
                 card_assigned_q = Q(assignee=user)
                 card_unassigned_q = Q(created_by=user) & Q(assignee__isnull=True)
                 card_q &= (card_assigned_q | card_unassigned_q)
+                
+            if start_date:
+                try:
+                    from datetime import datetime, timedelta
+                    from django.utils import timezone
+                    start_dt = datetime.strptime(start_date.split('T')[0], '%Y-%m-%d')
+                    start_dt = timezone.make_aware(start_dt)
+                    card_q &= Q(created_at__gte=start_dt)
+                except Exception:
+                    pass
+            if end_date:
+                try:
+                    from datetime import datetime, timedelta
+                    from django.utils import timezone
+                    end_dt = datetime.strptime(end_date.split('T')[0], '%Y-%m-%d')
+                    end_dt = timezone.make_aware(end_dt) + timedelta(days=1, microseconds=-1)
+                    card_q &= Q(created_at__lte=end_dt)
+                except Exception:
+                    pass
                 
             cards = Card.objects.filter(card_q).distinct()
             cards_meta = list(cards.values('id', 'created_at'))
