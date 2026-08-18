@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import Employee
+from .models import Employee, BusinessCard
 
 class EmployeeSerializer(serializers.ModelSerializer):
     # Read: expose as joinedDate for React
@@ -28,3 +28,9 @@ class EmployeeSerializer(serializers.ModelSerializer):
         if 'joinedDate' in mutable and 'joined_date' not in mutable:
             mutable['joined_date'] = mutable.pop('joinedDate')
         return super().to_internal_value(mutable)
+
+class BusinessCardSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BusinessCard
+        fields = ['id', 'name', 'email', 'phone', 'company', 'job_title', 'created_at']
+        read_only_fields = ['id', 'created_at']

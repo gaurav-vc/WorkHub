@@ -620,6 +620,7 @@ class TaskViewSet(TenantModelViewSet):
         view_mode = request.query_params.get('view_mode', 'my_tasks')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
+        is_delayed = request.query_params.get('is_delayed')
 
         queryset = self.filter_queryset(self.get_queryset())
         user = request.user
@@ -643,6 +644,14 @@ class TaskViewSet(TenantModelViewSet):
         
         if assignee:
             queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
+            
+        if is_delayed == 'true':
+            from django.utils import timezone
+            queryset = queryset.filter(
+                due_date__lt=timezone.now().date()
+            ).exclude(
+                status__in=["completed", "done"]
+            )
             
         if view_mode == 'my_tasks':
             assigned_q = Q(assigned_to=user) | Q(assignees=user)

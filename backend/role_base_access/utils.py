@@ -79,6 +79,7 @@ MODULE_ID_TO_URLS = {
     'tasks-resources': '/tasks/resources',
     'tasks-templates': '/tasks/templates',
     'mom-list': '/collaboration/moms',
+    'my-card': '/my-card',
     'team-chat': '/collaboration/chat',
     'docs-notes': '/collaboration/docs',
     'knowledge-base': '/collaboration/wiki',

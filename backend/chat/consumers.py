@@ -75,17 +75,13 @@ class WorkspaceConsumer(AsyncWebsocketConsumer):
             
         org_id = await self.get_user_org_id(self.user)
             
-        if not org_id:
-            await self.close()
-            return
+        if org_id:
+            self.org_group_name = f"org_{org_id}"
+            await self.channel_layer.group_add(
+                self.org_group_name,
+                self.channel_name
+            )
             
-        self.org_group_name = f"org_{org_id}"
-        
-        await self.channel_layer.group_add(
-            self.org_group_name,
-            self.channel_name
-        )
-        
         await self.accept()
 
     async def disconnect(self, close_code):

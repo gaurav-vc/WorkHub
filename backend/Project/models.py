@@ -95,6 +95,8 @@ class Task(TenantModel):
     status = models.CharField(max_length=100, default='pending')
     due_date = models.DateField()
     due_time = models.TimeField(null=True, blank=True)
+    type = models.CharField(max_length=50, null=True, blank=True)
+    platform = models.CharField(max_length=50, null=True, blank=True)
     description = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
     completion_date = models.DateTimeField(null=True, blank=True)
