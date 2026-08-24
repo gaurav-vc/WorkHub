@@ -339,9 +339,14 @@ def add_quick_link(request):
 def get_ai_context_data(user):
     today = timezone.now().date()
     
-    # 1. Tasks Context (match dashboard logic)
-    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:50]
-    tasks_data = [{"title": c.title, "priority": c.priority, "status": c.status, "due": str(c.due_date)} for c in cards_qs]
+    # 1. Tasks Context (match dashboard logic by fetching both Tasks and Cards)
+    from Project.models import Task
+    tasks_qs = Task.objects.filter(Q(assigned_to=user) | Q(assignees=user)).select_related('project').distinct().order_by('-created_at')[:50]
+    tasks_data = [{"title": t.title, "priority": getattr(t, 'priority', "P3"), "status": t.status, "due": str(t.due_date)} for t in tasks_qs]
+    
+    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:20]
+    for c in cards_qs:
+        tasks_data.append({"title": c.title, "priority": getattr(c, 'priority', "P3"), "status": c.status, "due": str(c.due_date)})
     
     # 2. Calendar / Meetings Context (match dashboard logic)
     visible_users = get_visible_users(user)

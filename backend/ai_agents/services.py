@@ -78,16 +78,77 @@ class AIGatewayService:
             return f"Debug Error fetching context: {str(live_data)}"
 
         # 1. Tasks
-        if any(w in lower_msg for w in ["my tasks", "pending tasks", "what are my tasks", "show tasks", "todo"]):
-            tasks = live_data.get('tasks', [])
-            if not tasks: return "You currently have no tasks assigned."
-            return "Here are your tasks:\n" + "\n".join([f"- [{t.get('priority')}] {t.get('title')} ({t.get('status')})" for t in tasks])
+        if any(w in lower_msg for w in ["my tasks", "due tasks", "pending tasks", "what are my tasks", "show tasks", "todo", "assigned to me", "assigned"]):
+            raw_tasks = live_data.get('tasks', [])
+            
+            # Filter tasks based on the specific request
+            tasks = []
+            for t in raw_tasks:
+                status = str(t.get('status', '')).lower()
+                is_completed = status in ['completed', 'done']
+                
+                # Never show completed tasks for these queries
+                if is_completed:
+                    continue
+                    
+                # If they specifically asked for "due" tasks, only show tasks with a due date
+                if "due" in lower_msg:
+                    if str(t.get('due', 'None')) == 'None':
+                        continue
+                        
+                # If they specifically asked for "pending", only show pending/not-started tasks
+                if "pending" in lower_msg:
+                    if status not in ['pending', 'yet_to_start', 'yet to start']:
+                        continue
+                        
+                tasks.append(t)
+                
+            if not tasks: 
+                msg = "You currently have no tasks assigned."
+                if "due" in lower_msg: msg = "You have no due tasks right now."
+                elif "pending" in lower_msg: msg = "You have no pending tasks right now."
+                return f"<div class='text-slate-500 italic'>{msg}</div>"
+            
+            html = "<div class='mb-3 font-semibold text-slate-800 text-sm'>Here are your tasks:</div><div class='flex flex-col gap-2.5'>"
+            for t in tasks:
+                priority = t.get('priority', 'P3')
+                p_color = 'bg-red-100 text-red-700' if priority in ['P1', 'P2'] else 'bg-blue-100 text-blue-700'
+                status = str(t.get('status')).replace('_', ' ').title()
+                due = t.get('due', 'No due date')
+                if due == 'None': due = 'No due date'
+                
+                html += f"""
+                <div class='p-3 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col gap-1.5 hover:border-indigo-300 transition-colors'>
+                  <div class='flex items-start justify-between gap-2'>
+                    <span class='font-medium text-slate-800 leading-tight'>{t.get('title')}</span>
+                    <span class='text-[10px] font-bold px-2 py-0.5 rounded-full {p_color} shrink-0'>{priority}</span>
+                  </div>
+                  <div class='flex items-center justify-between text-[11px] text-slate-500 mt-1 font-medium'>
+                    <span class='bg-slate-100 px-2 py-0.5 rounded text-slate-600'>{status}</span>
+                    <span class='flex items-center gap-1'><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> {due}</span>
+                  </div>
+                </div>
+                """
+            html += "</div>"
+            return html
             
         # 2. Meetings / Calendar
-        if any(w in lower_msg for w in ["my meetings", "schedule", "calendar", "upcoming meeting"]):
+        if any(w in lower_msg for w in ["meeting", "schedule", "calendar"]):
             meetings = live_data.get('meetings', [])
-            if not meetings: return "You have no upcoming meetings scheduled."
-            return "Here are your upcoming meetings:\n" + "\n".join([f"- {m.get('title')} at {m.get('time')}" for m in meetings])
+            if not meetings: return "<div class='text-slate-500 italic'>You have no upcoming meetings scheduled.</div>"
+            
+            html = "<div class='mb-3 font-semibold text-slate-800 text-sm'>Here are your upcoming meetings:</div><div class='flex flex-col gap-2.5'>"
+            for m in meetings:
+                html += f"""
+                <div class='p-3 bg-white border border-slate-200 rounded-xl shadow-sm flex flex-col gap-1.5 hover:border-purple-300 transition-colors border-l-4 border-l-purple-500'>
+                  <span class='font-medium text-slate-800 leading-tight'>{m.get('title')}</span>
+                  <div class='flex items-center text-[11px] text-slate-500 mt-0.5 font-medium'>
+                    <span class='flex items-center gap-1'><svg class="w-3 h-3 text-purple-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg> {str(m.get('time'))[:16]}</span>
+                  </div>
+                </div>
+                """
+            html += "</div>"
+            return html
             
         # 3. HR & Leave
         if any(w in lower_msg for w in ["leave balance", "my leave", "vacation days"]):
@@ -282,6 +343,11 @@ class AIGatewayService:
         if db_response:
             # Skip Gemini, zero token cost!
             return {"response": db_response}
+
+        # Strict block: If it's a chat agent and it didn't match the database first heuristics,
+        # we block it immediately to prevent token abuse.
+        if agent_type == 'chat':
+            return {"response": "This feature is coming soon!"}
 
         # 2. Gemini Reasoning Routing
         previous_messages = conversation.messages.order_by('created_at')

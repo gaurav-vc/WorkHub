@@ -337,6 +337,34 @@ def event_create(request):
 @require_rbac_permission('tasks-calendar')
 def event_update(request, pk):
     try:
+        pk_str = str(pk)
+        if pk_str.startswith('task_'):
+            from Project.models import Task
+            task_id = pk_str.replace('task_', '')
+            task = Task.objects.get(id=task_id)
+            
+            if 'start_time' in request.data:
+                try:
+                    dt = dateutil_parse(request.data['start_time'])
+                    if timezone.is_naive(dt):
+                        dt = timezone.make_aware(dt)
+                    task.due_date = dt.date()
+                    task.due_time = dt.time()
+                except Exception:
+                    return Response({"error": "Invalid start_time format"}, status=400)
+                    
+            if 'title' in request.data:
+                new_title = request.data['title']
+                if new_title.startswith("📋 [Task] "):
+                    new_title = new_title.replace("📋 [Task] ", "", 1)
+                task.title = new_title
+                
+            if 'description' in request.data:
+                task.description = request.data['description']
+            
+            task.save()
+            return Response({"message": "Task updated successfully from calendar"})
+
         meeting = Meeting.objects.get(id=pk)
         
         # Only allow organizer or perhaps attendees to update? 
@@ -379,6 +407,14 @@ def event_update(request, pk):
 @require_rbac_permission('tasks-calendar')
 def event_delete(request, pk):
     try:
+        pk_str = str(pk)
+        if pk_str.startswith('task_'):
+            from Project.models import Task
+            task_id = pk_str.replace('task_', '')
+            task = Task.objects.get(id=task_id)
+            task.delete()
+            return Response({"message": "Task deleted successfully from calendar"})
+
         meeting = Meeting.objects.get(id=pk)
         
         # Only allow the organizer to delete it.

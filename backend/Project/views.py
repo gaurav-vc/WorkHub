@@ -272,6 +272,20 @@ def add_task(request, project_id):
         'created_by': request.user if request.user.is_authenticated else None,
     }
     
+    # NEW: Extracting extra fields that are passed from frontend (including AI Assistant / Task Type fields)
+    for field in ['priority', 'due_time', 'type', 'platform', 'estimated_effort', 'effort_unit', 'color', 'start_day', 'duration', 'is_queued']:
+        if field in request.data and request.data[field] not in [None, ""]:
+            # Typecasting for specific fields
+            if field in ['estimated_effort', 'start_day', 'duration']:
+                try:
+                    task_kwargs[field] = int(request.data[field])
+                except (ValueError, TypeError):
+                    pass
+            elif field == 'is_queued':
+                task_kwargs[field] = str(request.data[field]).lower() == 'true'
+            else:
+                task_kwargs[field] = request.data[field]
+
     if 'time_interval_minutes' in request.data:
         try:
             task_kwargs['time_interval_minutes'] = int(request.data['time_interval_minutes'])
