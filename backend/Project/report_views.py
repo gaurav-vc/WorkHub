@@ -103,6 +103,7 @@ def employee_stats_report(request):
         raw_tasks.append({
             "id": t.id,
             "title": t.title,
+            "assignee": t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Unassigned",
             "status": t.status,
             "priority": t.priority,
             "due_date": t.due_date.strftime('%Y-%m-%d') if t.due_date else None,
