@@ -13,6 +13,16 @@ class Notification(TenantModel):
     class Meta:
         db_table = 'workspace_notification'
 
+class PushSubscription(TenantModel):
+    user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='push_subscriptions')
+    endpoint = models.URLField(max_length=500, unique=True)
+    p256dh = models.CharField(max_length=255)
+    auth = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'workspace_pushsubscription'
+
 class TeamActivity(TenantModel):
     user = models.ForeignKey('auth.User', on_delete=models.CASCADE, related_name='api_activities')
     action = models.CharField(max_length=200)

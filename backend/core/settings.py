@@ -257,3 +257,12 @@ FILE_UPLOAD_MAX_MEMORY_SIZE = 20971520
 
 # Allow iframe previews on frontend
 X_FRAME_OPTIONS = 'ALLOWALL'
+
+# Push Notifications
+import json
+VAPID_PRIVATE_KEY = os.environ.get('VAPID_PRIVATE_KEY', '')
+vapid_claims_raw = os.environ.get('VAPID_CLAIMS', '{"sub": "mailto:admin@example.com"}')
+try:
+    VAPID_CLAIMS = json.loads(vapid_claims_raw)
+except Exception:
+    VAPID_CLAIMS = {"sub": "mailto:admin@example.com"}
