@@ -6,7 +6,7 @@ router = DefaultRouter()
 router.register(r'notifications', NotificationViewSet, basename='notifications')
 
 urlpatterns = [
-    path('', include(router.urls)),
-    path('ai/chat/', ai_assistant_agent, name='ai-chat'),
     path('notifications/subscribe/', subscribe_to_push, name='push-subscribe'),
+    path('ai/chat/', ai_assistant_agent, name='ai-chat'),
+    path('', include(router.urls)),
 ]
