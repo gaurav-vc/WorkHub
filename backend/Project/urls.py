@@ -17,4 +17,7 @@ urlpatterns = [
     
     # Reports
     path('reports/employee-stats/', report_views.employee_stats_report, name='employee-stats-report'),
+    
+    # Excel Export
+    path('export-multiple/', views.export_projects_excel, name='export-multiple-projects'),
 ]

@@ -1135,3 +1135,61 @@ class TaskViewSet(TenantModelViewSet):
         
         self._notify_workspace(org, 'tasks_updated', {'action': 'delete', 'task_id': task_id})
         return response
+
+import openpyxl
+from django.http import HttpResponse
+
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.decorators import permission_classes
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def export_projects_excel(request):
+    project_ids_str = request.GET.get('ids', '')
+    if not project_ids_str:
+        return Response({'error': 'No project IDs provided'}, status=400)
+    
+    project_ids = [pid.strip() for pid in project_ids_str.split(',') if pid.strip().isdigit()]
+    
+    projects = Project.objects.filter(id__in=project_ids)
+    
+    workbook = openpyxl.Workbook()
+    
+    projects_sheet = workbook.active
+    projects_sheet.title = "Projects and Tasks"
+    projects_sheet.append(["Project ID", "Project Name", "Project Status", "Task Title", "Priority", "Task Status", "Assignee", "Task Due Date"])
+    
+    from .models import Task as ApiTask
+    for p in projects:
+        # Use all_objects to bypass ANY tenant filtering that might hide tasks
+        tasks = ApiTask.all_objects.filter(project=p)
+        if tasks.exists():
+            for t in tasks:
+                assignee_name = t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Unassigned"
+                projects_sheet.append([
+                    p.id,
+                    p.name,
+                    p.status,
+                    t.title,
+                    t.priority,
+                    t.status,
+                    assignee_name,
+                    str(t.due_date) if t.due_date else "N/A"
+                ])
+        else:
+            # If the project has no tasks, still show the project
+            projects_sheet.append([
+                p.id,
+                p.name,
+                p.status,
+                "No tasks",
+                "-",
+                "-",
+                "-",
+                "-"
+            ])
+        
+    response = HttpResponse(content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+    response['Content-Disposition'] = 'attachment; filename="exported_projects.xlsx"'
+    workbook.save(response)
+    return response
