@@ -125,7 +125,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = [
-            'id', 'title', 'status', 'priority', 'due_date', 'due_time', 
+            'id', 'title', 'description', 'status', 'priority', 'due_date', 'due_time', 
             'type', 'platform',
             'time_interval_minutes', 'assignee_detail', 'assignees_detail', 
             'health_status', 'created_at', 'estimated_effort', 

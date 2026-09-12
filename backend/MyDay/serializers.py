@@ -17,8 +17,8 @@ class TaskSerializer(serializers.ModelSerializer):
     project = serializers.SerializerMethodField()
     class Meta:
         model = Task
-        fields = ['id', 'title', 'project', 'priority', 'status', 'due_date', 'type', 'platform']
-    def get_project(self, obj): return obj.project.name
+        fields = ['id', 'title', 'description', 'project', 'priority', 'status', 'due_date', 'type', 'platform']
+    def get_project(self, obj): return obj.project.name if obj.project else "General Workspace"
 
 class MeetingSerializer(serializers.ModelSerializer):
     time = serializers.SerializerMethodField()
