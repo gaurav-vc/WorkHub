@@ -656,8 +656,11 @@ class TaskViewSet(TenantModelViewSet):
             else:
                 queryset = queryset.filter(status=status_filter)
         
-        if assignee:
-            queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
+        if assignee and assignee != 'all':
+            if assignee == 'unassigned':
+                queryset = queryset.filter(Q(assigned_to__isnull=True) & Q(assignees__isnull=True))
+            else:
+                queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
             
         if is_delayed == 'true':
             from django.utils import timezone
@@ -726,8 +729,11 @@ class TaskViewSet(TenantModelViewSet):
                     card_q &= Q(status__in=["completed", "done"])
                 else:
                     card_q &= Q(status=status_filter)
-            if assignee:
-                card_q &= Q(assignee__id=assignee)
+            if assignee and assignee != 'all':
+                if assignee == 'unassigned':
+                    card_q &= Q(assignee__isnull=True)
+                else:
+                    card_q &= Q(assignee__id=assignee)
             if view_mode == 'my_tasks':
                 card_assigned_q = Q(assignee=user)
                 card_unassigned_q = Q(created_by=user) & Q(assignee__isnull=True)

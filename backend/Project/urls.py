@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from . import report_views
+from . import analytics_views
 
 urlpatterns = [
     path('', views.project_list_create, name='project-list-create'),
@@ -20,4 +21,8 @@ urlpatterns = [
     
     # Excel Export
     path('export-multiple/', views.export_projects_excel, name='export-multiple-projects'),
+    
+    # Project Analytics
+    path('analytics/all/', analytics_views.projects_analytics_all, name='projects-analytics-all'),
+    path('analytics/<int:project_id>/', analytics_views.project_analytics_detail, name='project-analytics-detail'),
 ]

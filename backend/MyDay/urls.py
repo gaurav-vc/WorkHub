@@ -19,4 +19,8 @@ urlpatterns = [
     
     # Catches: /api/myday/ai-context/
     path('ai-context/', views.ai_context_view, name='ai_context'),
+
+    # Admin Analytics
+    path('admin-summary/', views.admin_task_summary, name='admin_task_summary'),
+    path('user-graph/<int:user_id>/', views.user_task_graph, name='user_task_graph'),
 ]

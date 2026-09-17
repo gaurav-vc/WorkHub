@@ -399,3 +399,142 @@ def get_ai_context_data(user):
 def ai_context_view(request):
     data = get_ai_context_data(request.user)
     return Response(data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def admin_task_summary(request):
+    user = request.user
+    auth_profile = getattr(user, 'auth_profile', None)
+    user_role_rel = getattr(auth_profile, 'role_relationship', None)
+    is_admin = (
+        user.is_superuser
+        or user.is_staff
+        or (user_role_rel and user_role_rel.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
+    )
+    if not is_admin:
+        return Response({"error": "Unauthorized"}, status=403)
+
+    created_by = request.GET.get('created_by')
+    assigned_to = request.GET.get('assigned_to')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    from django.db.models import Q
+    from Project.models import Task
+    from boards.models import Card
+
+    task_qs = Task.objects.all()
+    card_qs = Card.objects.all()
+
+    if created_by and created_by != 'all':
+        task_qs = task_qs.filter(created_by_id=created_by)
+        card_qs = card_qs.filter(created_by_id=created_by)
+    
+    if assigned_to and assigned_to != 'all':
+        task_qs = task_qs.filter(Q(assigned_to_id=assigned_to) | Q(assignees__id=assigned_to))
+        card_qs = card_qs.filter(assignee_id=assigned_to)
+
+    if start_date:
+        task_qs = task_qs.filter(created_at__date__gte=start_date)
+        card_qs = card_qs.filter(created_at__date__gte=start_date)
+
+    if end_date:
+        task_qs = task_qs.filter(created_at__date__lte=end_date)
+        card_qs = card_qs.filter(created_at__date__lte=end_date)
+
+    task_qs = task_qs.distinct()
+    card_qs = card_qs.distinct()
+
+    def map_status(s):
+        s = (s or 'pending').lower()
+        if s in ('done', 'completed'): return 'completed'
+        if s in ('in_progress', 'in-progress'): return 'in_progress'
+        return 'open'
+
+    completed = 0
+    in_progress = 0
+    open_tasks = 0
+
+    for t in task_qs:
+        s = map_status(t.status)
+        if s == 'completed': completed += 1
+        elif s == 'in_progress': in_progress += 1
+        else: open_tasks += 1
+
+    for c in card_qs:
+        s = map_status(c.status)
+        if s == 'completed': completed += 1
+        elif s == 'in_progress': in_progress += 1
+        else: open_tasks += 1
+
+    total = completed + in_progress + open_tasks
+
+    return Response({
+        "totalTasks": total,
+        "completed": completed,
+        "inProgress": in_progress,
+        "open": open_tasks
+    })
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def user_task_graph(request, user_id):
+    user = request.user
+    auth_profile = getattr(user, 'auth_profile', None)
+    user_role_rel = getattr(auth_profile, 'role_relationship', None)
+    is_admin = (
+        user.is_superuser
+        or user.is_staff
+        or (user_role_rel and user_role_rel.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
+    )
+    if not is_admin:
+        return Response({"error": "Unauthorized"}, status=403)
+
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
+
+    from django.db.models import Q
+    from Project.models import Task
+    from boards.models import Card
+
+    task_qs = Task.objects.filter(Q(assigned_to_id=user_id) | Q(assignees__id=user_id))
+    card_qs = Card.objects.filter(assignee_id=user_id)
+
+    if start_date:
+        task_qs = task_qs.filter(created_at__date__gte=start_date)
+        card_qs = card_qs.filter(created_at__date__gte=start_date)
+
+    if end_date:
+        task_qs = task_qs.filter(created_at__date__lte=end_date)
+        card_qs = card_qs.filter(created_at__date__lte=end_date)
+
+    task_qs = task_qs.distinct()
+    card_qs = card_qs.distinct()
+
+    def map_status(s):
+        s = (s or 'pending').lower()
+        if s in ('done', 'completed'): return 'completed'
+        if s in ('in_progress', 'in-progress'): return 'in_progress'
+        return 'open'
+
+    completed = 0
+    in_progress = 0
+    open_tasks = 0
+
+    for t in task_qs:
+        s = map_status(t.status)
+        if s == 'completed': completed += 1
+        elif s == 'in_progress': in_progress += 1
+        else: open_tasks += 1
+
+    for c in card_qs:
+        s = map_status(c.status)
+        if s == 'completed': completed += 1
+        elif s == 'in_progress': in_progress += 1
+        else: open_tasks += 1
+
+    return Response({
+        "completed": completed,
+        "in_progress": in_progress,
+        "open": open_tasks
+    })
