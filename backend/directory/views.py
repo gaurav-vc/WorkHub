@@ -293,3 +293,17 @@ class BusinessCardViewSet(viewsets.ModelViewSet):
             })
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser])
+    def advanced_scan(self, request):
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return Response({'error': 'No image provided'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        try:
+            from .advanced_scanner import AdvancedBusinessCardScanner
+            scanner = AdvancedBusinessCardScanner()
+            result = scanner.scan(image_file)
+            return Response(result)
+        except Exception as e:
+            return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)

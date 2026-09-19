@@ -8,7 +8,7 @@ from core.utils import get_visible_users
 from rest_framework.pagination import PageNumberPagination
 
 class StandardResultsSetPagination(PageNumberPagination):
-    page_size = 12
+    page_size = 50
     page_size_query_param = 'page_size'
     max_page_size = 100
 
@@ -699,7 +699,7 @@ class TaskViewSet(TenantModelViewSet):
         queryset = queryset.distinct()
         
         # Fast query for Tasks (IDs and sorting fields only)
-        tasks_meta = list(queryset.values('id', 'created_at'))
+        tasks_meta = list(queryset.values('id', 'created_at', 'status'))
         for t in tasks_meta:
             t['type'] = 'task'
 
@@ -759,13 +759,16 @@ class TaskViewSet(TenantModelViewSet):
                     pass
                 
             cards = Card.objects.filter(card_q).distinct()
-            cards_meta = list(cards.values('id', 'created_at'))
+            cards_meta = list(cards.values('id', 'created_at', 'status'))
             for c in cards_meta:
                 c['type'] = 'card'
 
         # Merge and sort the lightweight metadata list
         combined_meta = tasks_meta + cards_meta
-        combined_meta.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
+        combined_meta.sort(key=lambda x: (
+            0 if str(x.get('status') or '').lower() in ['completed', 'done'] else 1,
+            str(x.get('created_at') or '')
+        ), reverse=True)
 
         # Python-level pagination over lightweight list
         paginate = request.query_params.get('paginate', 'true').lower() != 'false'
@@ -779,7 +782,7 @@ class TaskViewSet(TenantModelViewSet):
             paginator = None
             page_meta = combined_meta
 
-        # Fetch exactly the 12 full objects using prefetch
+        # Fetch exactly the 50 full objects using prefetch
         task_ids = [m['id'] for m in page_meta if m['type'] == 'task']
         card_ids = [m['id'] for m in page_meta if m['type'] == 'card']
         
@@ -819,7 +822,10 @@ class TaskViewSet(TenantModelViewSet):
                     }
                     final_data.append(card_data)
         # Re-sort the fetched items to preserve their exact order
-        final_data.sort(key=lambda x: str(x.get('created_at') or ''), reverse=True)
+        final_data.sort(key=lambda x: (
+            0 if str(x.get('status') or '').lower() in ['completed', 'done'] else 1,
+            str(x.get('created_at') or '')
+        ), reverse=True)
 
         if paginate and hasattr(paginator, 'page') and paginator.page:
             return paginator.get_paginated_response(final_data)

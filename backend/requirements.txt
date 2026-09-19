@@ -146,3 +146,6 @@ pytesseract
 Pillow
 pywebpush==2.5.0
 openpyxl==3.1.5
+numpy
+opencv-python-headless  
+ 

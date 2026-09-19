@@ -3,7 +3,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from django.contrib.auth.models import User
 from django.utils import timezone
-from django.db.models import Q
+from django.db.models import Q, Case, When, Value, IntegerField
 
 from role_base_access.permissions import require_rbac_permission
 
@@ -51,7 +51,9 @@ def dashboard(request):
 
     # ── Tasks: only the current user's assigned tasks ────────────────────────
     from Project.models import Task
-    tasks_qs = Task.objects.filter(Q(assigned_to=user) | Q(assignees=user)).select_related('project').distinct().order_by('-created_at')[:50]
+    tasks_qs = Task.objects.filter(Q(assigned_to=user) | Q(assignees=user)).select_related('project').distinct().annotate(
+        is_done=Case(When(status__in=['done', 'completed'], then=Value(1)), default=Value(0), output_field=IntegerField())
+    ).order_by('is_done', '-created_at')[:50]
 
     today_tasks_data = []
     for t in tasks_qs:
@@ -65,7 +67,9 @@ def dashboard(request):
         })
 
     # ── Delegated Tasks: tasks created by user but assigned to someone else ──
-    delegated_qs = Task.objects.filter(created_by=user).exclude(Q(assigned_to=user) | Q(assignees=user)).select_related('project', 'assigned_to').prefetch_related('assignees').distinct().order_by('-created_at')[:20]
+    delegated_qs = Task.objects.filter(created_by=user).exclude(Q(assigned_to=user) | Q(assignees=user)).select_related('project', 'assigned_to').prefetch_related('assignees').distinct().annotate(
+        is_done=Case(When(status__in=['done', 'completed'], then=Value(1)), default=Value(0), output_field=IntegerField())
+    ).order_by('is_done', '-created_at')[:20]
     delegated_tasks_data = []
     for t in delegated_qs:
         assignees_names = [a.get_full_name() or a.username for a in t.assignees.all()]
@@ -83,7 +87,9 @@ def dashboard(request):
         })
 
     # ── Merge Boards Cards ───────────────────────────────────────────────────
-    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').order_by('-created_at')[:20]
+    cards_qs = Card.objects.filter(assignee=user).select_related('column__board').annotate(
+        is_done=Case(When(status__in=['done', 'completed'], then=Value(1)), default=Value(0), output_field=IntegerField())
+    ).order_by('is_done', '-created_at')[:20]
     for c in cards_qs:
         proj_name = "My Boards"
         if getattr(c, 'column', None) and getattr(c.column, 'board', None):
