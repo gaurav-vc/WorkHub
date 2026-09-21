@@ -547,10 +547,19 @@ class RoleAccessMappingViewSet(viewsets.ModelViewSet):
                     }
                 )
                 
-                # If the mapping already existed, patch missing granular permissions
+                # If the mapping already existed, patch missing granular permissions and update path/title
                 if not created:
                     perms = obj.permissions
                     modified = False
+                    
+                    if obj.site_name != route.get('path', ''):
+                        obj.site_name = route.get('path', '')
+                        modified = True
+                        
+                    if obj.title != route.get('title', route['id']):
+                        obj.title = route.get('title', route['id'])
+                        modified = True
+                        
                     for key in ['view', 'create', 'edit', 'delete']:
                         if key not in perms:
                             perms[key] = default_perms[key]

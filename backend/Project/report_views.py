@@ -7,19 +7,59 @@ import datetime
 from .models import Task
 from django.contrib.auth.models import User
 
-def is_site_admin(user):
+def has_reports_access(user):
+    print(f"DEBUG has_reports_access: Checking user {user.username} (superuser: {user.is_superuser})")
     if user.is_superuser:
         return True
     try:
         profile = getattr(user, 'auth_profile', None)
-        return profile and profile.user_type in ['site_admin', 'super_user']
-    except Exception:
-        return False
+        print(f"DEBUG: profile: {profile}, user_type: {profile.user_type if profile else 'None'}")
+        if profile and profile.user_type in ['site_admin', 'super_user']:
+            return True
+            
+        # Check RBAC
+        role = 'user'
+        if profile:
+            if profile.role_relationship:
+                role = profile.role_relationship.name.lower()
+            elif profile.user_type and profile.user_type not in ['employee']:
+                role = profile.user_type
+            
+        if role == 'user' or role == 'employee':
+            emp_profile = getattr(user, 'res_employee', None)
+            if emp_profile and emp_profile.role:
+                from role_base_access.models import Role as RBACRole
+                rbac_role = RBACRole.objects.filter(code__iexact=emp_profile.role).first()
+                if rbac_role:
+                    role = rbac_role.name.lower()
+                else:
+                    role = emp_profile.role.lower()
+                    
+        print(f"DEBUG: Resolved role is {role}")
+        from role_base_access.models import RoleAccessMapping
+        # RoleAccessMapping is a TenantModel. Does the user have the right site?
+        mappings = RoleAccessMapping.objects.filter(role=role, frontend_site_id='admin-reports')
+        print(f"DEBUG: Mappings with frontend_site_id='admin-reports': {mappings.count()}")
+        if not mappings.exists():
+            mappings = RoleAccessMapping.objects.filter(role=role, site_name='/reports')
+            print(f"DEBUG: Mappings with site_name='/reports': {mappings.count()}")
+            
+        if mappings.exists():
+            mapping = mappings.first()
+            print(f"DEBUG: First mapping permissions: {mapping.permissions}")
+            if mapping.permissions.get('view') is True:
+                return True
+                
+    except Exception as e:
+        print(f"DEBUG: Exception in has_reports_access: {e}")
+        pass
+    print("DEBUG: Returning False")
+    return False
 
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def employee_stats_report(request):
-    if not is_site_admin(request.user):
+    if not has_reports_access(request.user):
         return Response({"error": "Unauthorized. Site Admin access required."}, status=403)
         
     employee_ids = request.query_params.get('employee_ids') or request.query_params.get('employee_id')

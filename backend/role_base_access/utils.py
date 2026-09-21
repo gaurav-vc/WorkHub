@@ -94,4 +94,8 @@ MODULE_ID_TO_URLS = {
     'workflow-automation': '/ai/workflows',
     'predictive-insights': '/ai/insights',
     'ai-agents': '/ai/agents',
+    'admin-setup': '/admin/setup',
+    'admin-branding': '/admin/branding',
+    'admin-integrations': '/admin/integrations',
+    'admin-reports': '/reports',
 }
