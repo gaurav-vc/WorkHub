@@ -475,6 +475,23 @@ def add_checklist(request, task_id):
     return Response({"error": "title required"}, status=400)
 
 @api_view(['POST'])
+def toggle_checklist(request, task_id):
+    from .models import Task as ApiTask, TaskChecklist
+    try:
+        task = ApiTask.objects.get(id=task_id)
+    except ApiTask.DoesNotExist:
+        return Response({"error": "Task not found"}, status=404)
+        
+    checklist_id = request.data.get('checklist_id')
+    try:
+        ck = TaskChecklist.objects.get(id=checklist_id, task=task)
+        ck.is_completed = not ck.is_completed
+        ck.save()
+        return Response({"status": "toggled", "is_completed": ck.is_completed})
+    except TaskChecklist.DoesNotExist:
+        return Response({"error": "checklist not found"}, status=404)
+
+@api_view(['POST'])
 def add_chat(request, task_id):
     from .models import Task as ApiTask, TaskChat
     try:
@@ -511,6 +528,29 @@ def add_comment(request, task_id):
         from .serializers import TaskCommentSerializer
         return Response(TaskCommentSerializer(comment).data, status=status.HTTP_201_CREATED)
     return Response({"error": "text required"}, status=status.HTTP_400_BAD_REQUEST)
+
+@api_view(['PATCH'])
+def edit_comment(request, task_id):
+    from .models import Task as ApiTask, TaskComment
+    try:
+        task = ApiTask.objects.get(id=task_id)
+    except ApiTask.DoesNotExist:
+        return Response({"error": "Task not found"}, status=404)
+        
+    comment_id = request.data.get('comment_id')
+    text = request.data.get('text')
+    
+    if not comment_id or not text:
+        return Response({"error": "comment_id and text required"}, status=status.HTTP_400_BAD_REQUEST)
+        
+    try:
+        comment = TaskComment.objects.get(id=comment_id, task=task)
+        comment.text = text
+        comment.save()
+        from .serializers import TaskCommentSerializer
+        return Response(TaskCommentSerializer(comment).data, status=status.HTTP_200_OK)
+    except TaskComment.DoesNotExist:
+        return Response({"error": "comment not found"}, status=status.HTTP_404_NOT_FOUND)
 
 
 from core.views import TenantModelViewSet

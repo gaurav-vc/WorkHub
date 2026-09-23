@@ -174,6 +174,21 @@ class CardViewSet(viewsets.ModelViewSet):
             return Response({"status": "comment added"})
         return Response({"error": "text required"}, status=400)
 
+    @action(detail=True, methods=['patch'])
+    def edit_comment(self, request, pk=None):
+        comment_id = request.data.get('comment_id')
+        text = request.data.get('text')
+        try:
+            from .models import CardComment
+            comment = CardComment.objects.get(id=comment_id, card=self.get_object())
+            if text:
+                comment.text = text
+                comment.save()
+                return Response({"status": "comment updated"})
+            return Response({"error": "text required"}, status=400)
+        except CardComment.DoesNotExist:
+            return Response({"error": "comment not found"}, status=404)
+
     @action(detail=True, methods=['post'])
     def add_chat(self, request, pk=None):
         from .models import CardChat

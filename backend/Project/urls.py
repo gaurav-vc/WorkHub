@@ -13,8 +13,10 @@ urlpatterns = [
     path('tasks/<int:task_id>/upload/', views.upload_task_attachment, name='upload-task-attachment'),
     path('tasks/<int:task_id>/add_subtask/', views.add_subtask, name='add-subtask'),
     path('tasks/<int:task_id>/add_checklist/', views.add_checklist, name='add-checklist'),
+    path('tasks/<int:task_id>/toggle_checklist/', views.toggle_checklist, name='toggle-checklist'),
     path('tasks/<int:task_id>/add_chat/', views.add_chat, name='add-chat'),
     path('tasks/<int:task_id>/add_comment/', views.add_comment, name='add-comment'),
+    path('tasks/<int:task_id>/edit_comment/', views.edit_comment, name='edit-comment'),
     
     # Reports
     path('reports/employee-stats/', report_views.employee_stats_report, name='employee-stats-report'),
