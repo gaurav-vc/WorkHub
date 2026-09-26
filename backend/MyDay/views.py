@@ -417,20 +417,21 @@ def admin_task_summary(request):
         or user.is_staff
         or (user_role_rel and user_role_rel.name.lower() in ('admin', 'org_admin', 'site_admin', 'hr', 'manager'))
     )
-    if not is_admin:
-        return Response({"error": "Unauthorized"}, status=403)
-
-    created_by = request.GET.get('created_by')
-    assigned_to = request.GET.get('assigned_to')
-    start_date = request.GET.get('start_date')
-    end_date = request.GET.get('end_date')
-
     from django.db.models import Q
     from Project.models import Task
     from boards.models import Card
 
     task_qs = Task.objects.all()
     card_qs = Card.objects.all()
+
+    if not is_admin:
+        task_qs = task_qs.filter(Q(created_by=user) | Q(assigned_to=user) | Q(assignees=user))
+        card_qs = card_qs.filter(Q(created_by=user) | Q(assignee=user))
+
+    created_by = request.GET.get('created_by')
+    assigned_to = request.GET.get('assigned_to')
+    start_date = request.GET.get('start_date')
+    end_date = request.GET.get('end_date')
 
     if created_by and created_by != 'all':
         task_qs = task_qs.filter(created_by_id=created_by)

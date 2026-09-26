@@ -671,6 +671,7 @@ class TaskViewSet(TenantModelViewSet):
         priority = request.query_params.get('priority', 'all')
         status_filter = request.query_params.get('status', 'all')
         assignee = request.query_params.get('assignee', '')
+        creator = request.query_params.get('creator', '')
         view_mode = request.query_params.get('view_mode', 'my_tasks')
         start_date = request.query_params.get('start_date')
         end_date = request.query_params.get('end_date')
@@ -701,6 +702,9 @@ class TaskViewSet(TenantModelViewSet):
                 queryset = queryset.filter(Q(assigned_to__isnull=True) & Q(assignees__isnull=True))
             else:
                 queryset = queryset.filter(Q(assigned_to__id=assignee) | Q(assignees__id=assignee))
+                
+        if creator and creator != 'all':
+            queryset = queryset.filter(created_by__id=creator)
             
         if is_delayed == 'true':
             from django.utils import timezone
