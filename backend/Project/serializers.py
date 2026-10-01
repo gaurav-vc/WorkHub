@@ -27,8 +27,9 @@ class TaskChatSerializer(serializers.ModelSerializer):
 
 class TaskSerializer(serializers.ModelSerializer):
     project = serializers.SerializerMethodField()
-    project_id = serializers.IntegerField(source='project.id', read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
     dueTime = serializers.SerializerMethodField()
+    raw_due_time = serializers.TimeField(source='due_time', read_only=True)
     
     comments = serializers.SerializerMethodField()
     attachments = serializers.SerializerMethodField()
@@ -118,7 +119,8 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     assignees_detail = serializers.SerializerMethodField()
     health_status = serializers.ReadOnlyField()
     project = serializers.SerializerMethodField()
-    project_id = serializers.IntegerField(source='project.id', read_only=True)
+    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
+    raw_due_time = serializers.TimeField(source='due_time', read_only=True)
 
     created_by_name = serializers.SerializerMethodField()
 
@@ -129,7 +131,7 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'type', 'platform',
             'time_interval_minutes', 'assignee_detail', 'assignees_detail', 
             'health_status', 'created_at', 'estimated_effort', 
-            'effort_unit', 'duration', 'project', 'project_id', 'created_by_name'
+            'effort_unit', 'duration', 'project', 'project_id', 'created_by_name', 'raw_due_time'
         ]
 
     def get_created_by_name(self, obj):
