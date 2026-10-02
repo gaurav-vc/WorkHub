@@ -8,6 +8,9 @@ import urllib.parse
 import requests
 from django.utils import timezone
 from datetime import timedelta
+import base64
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
 from .models import Integration, MicrosoftCredentials, EmailAccount, SyncedEmail
 from .serializers import IntegrationSerializer
@@ -164,7 +167,7 @@ def google_login(request):
         f"&redirect_uri={urllib.parse.quote(redirect_uri)}"
         f"&access_type=offline"
         f"&prompt=consent"
-        f"&scope=https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/userinfo.email%20https://www.googleapis.com/auth/calendar.events"
+        f"&scope=https://www.googleapis.com/auth/gmail.readonly%20https://www.googleapis.com/auth/gmail.send%20https://www.googleapis.com/auth/gmail.modify%20https://www.googleapis.com/auth/userinfo.email%20https://www.googleapis.com/auth/calendar.events"
         f"&state={urllib.parse.quote(state)}"
     )
     return Response({"url": auth_url})
@@ -298,3 +301,139 @@ def get_synced_emails(request):
             "web_link": e.web_link,
         })
     return Response(data)
+
+@api_view(['GET'])
+@permission_classes([IsAuthenticated])
+def get_email_details(request, message_id):
+    try:
+        # Assuming the email is in SyncedEmail to get the account ID
+        synced = SyncedEmail.objects.get(message_id=message_id, user=request.user)
+        account = synced.account
+        
+        if account.provider != 'google':
+            return Response({"error": "Only Google accounts are supported for native viewing right now"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        headers = {'Authorization': f'Bearer {account.access_token}', 'Accept': 'application/json'}
+        res = requests.get(f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}?format=full', headers=headers)
+        
+        if res.status_code == 401: # Token expired handling logic would go here in a production app
+            return Response({"error": "Token expired, please reconnect your account"}, status=status.HTTP_401_UNAUTHORIZED)
+            
+        if res.status_code != 200:
+            return Response(res.json(), status=res.status_code)
+            
+        msg_data = res.json()
+        
+        # Parse payload
+        payload = msg_data.get('payload', {})
+        headers_list = payload.get('headers', [])
+        
+        # Extract threading headers
+        subject = next((h['value'] for h in headers_list if h['name'].lower() == 'subject'), '')
+        msg_id_header = next((h['value'] for h in headers_list if h['name'].lower() == 'message-id'), '')
+        references = next((h['value'] for h in headers_list if h['name'].lower() == 'references'), '')
+        from_header = next((h['value'] for h in headers_list if h['name'].lower() == 'from'), '')
+        to_header = next((h['value'] for h in headers_list if h['name'].lower() == 'to'), '')
+        
+        # Mark as read
+        if 'UNREAD' in msg_data.get('labelIds', []):
+            requests.post(
+                f'https://gmail.googleapis.com/gmail/v1/users/me/messages/{message_id}/modify',
+                headers=headers,
+                json={"removeLabelIds": ["UNREAD"]}
+            )
+            synced.is_read = True
+            synced.save()
+            
+        # Decode body
+        def decode_part(part):
+            data = part.get('body', {}).get('data', '')
+            if data:
+                return base64.urlsafe_b64decode(data + '=' * (-len(data) % 4)).decode('utf-8', errors='replace')
+            return ''
+
+        html_body = ""
+        text_body = ""
+
+        def find_parts(parts):
+            nonlocal html_body, text_body
+            for part in parts:
+                mime_type = part.get('mimeType')
+                if mime_type == 'text/html':
+                    html_body = decode_part(part)
+                elif mime_type == 'text/plain':
+                    text_body = decode_part(part)
+                if 'parts' in part:
+                    find_parts(part['parts'])
+
+        if 'parts' in payload:
+            find_parts(payload['parts'])
+        else:
+            if payload.get('mimeType') == 'text/html':
+                html_body = decode_part(payload)
+            else:
+                text_body = decode_part(payload)
+
+        return Response({
+            "id": message_id,
+            "subject": subject,
+            "from": from_header,
+            "to": to_header,
+            "html_body": html_body or text_body,
+            "text_body": text_body,
+            "message_id_header": msg_id_header,
+            "references": references,
+            "thread_id": msg_data.get('threadId')
+        })
+    except SyncedEmail.DoesNotExist:
+        return Response({"error": "Email not found in synced inbox"}, status=status.HTTP_404_NOT_FOUND)
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def reply_email(request, message_id):
+    try:
+        synced = SyncedEmail.objects.get(message_id=message_id, user=request.user)
+        account = synced.account
+        reply_html = request.data.get('body')
+        
+        if not reply_html:
+            return Response({"error": "Reply body is required"}, status=status.HTTP_400_BAD_REQUEST)
+            
+        # Get original headers from our endpoint logic or frontend
+        msg_id_header = request.data.get('message_id_header')
+        references = request.data.get('references')
+        original_subject = request.data.get('subject')
+        to_address = request.data.get('to') # Note: this should actually be the 'From' of the original
+        
+        # Create MIME Message
+        message = MIMEMultipart()
+        message['To'] = to_address
+        message['Subject'] = original_subject if original_subject.lower().startswith('re:') else f"Re: {original_subject}"
+        message['In-Reply-To'] = msg_id_header
+        
+        if references:
+            message['References'] = f"{references} {msg_id_header}"
+        else:
+            message['References'] = msg_id_header
+            
+        msg_text = MIMEText(reply_html, 'html')
+        message.attach(msg_text)
+        
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        
+        headers = {'Authorization': f'Bearer {account.access_token}', 'Content-Type': 'application/json'}
+        payload = {
+            "raw": raw_message,
+            "threadId": request.data.get('thread_id')
+        }
+        
+        res = requests.post('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', headers=headers, json=payload)
+        
+        if res.status_code == 200:
+            return Response({"success": True, "message": "Reply sent successfully"})
+        return Response(res.json(), status=res.status_code)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
