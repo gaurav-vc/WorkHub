@@ -437,3 +437,41 @@ def reply_email(request, message_id):
         
     except Exception as e:
         return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+@api_view(['POST'])
+@permission_classes([IsAuthenticated])
+def send_contact_email(request):
+    try:
+        account = EmailAccount.objects.filter(user=request.user, provider='google').first()
+        if not account:
+            return Response({"error": "No connected Google account found."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        subject = request.data.get('subject')
+        body = request.data.get('body')
+        to_address = request.data.get('to')
+        
+        if not all([subject, body, to_address]):
+            return Response({"error": "Subject, body, and to_address are required."}, status=status.HTTP_400_BAD_REQUEST)
+            
+        message = MIMEMultipart()
+        message['To'] = to_address
+        message['Subject'] = subject
+        
+        msg_text = MIMEText(body, 'html')
+        message.attach(msg_text)
+        
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+        
+        headers = {'Authorization': f'Bearer {account.access_token}', 'Content-Type': 'application/json'}
+        payload = {
+            "raw": raw_message
+        }
+        
+        res = requests.post('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', headers=headers, json=payload)
+        
+        if res.status_code == 200:
+            return Response({"success": True, "message": "Email sent successfully"})
+        return Response(res.json(), status=res.status_code)
+        
+    except Exception as e:
+        return Response({"error": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
