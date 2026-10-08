@@ -222,6 +222,9 @@ class Task(TenantModel):
                 if not self.is_queued and not self.started_at:
                     self.started_at = timezone.now()
 
+        if self.status in ['done', 'completed'] and not self.completion_date:
+            self.completion_date = timezone.now()
+            
         super().save(*args, **kwargs)
 
         if newly_assigned_user and newly_assigned_user != self.created_by:
@@ -240,15 +243,12 @@ class Task(TenantModel):
                 print(f"Error creating notification: {e}")
 
         if status_changed_to_done:
-            if not self.completion_date:
-                self.completion_date = timezone.now()
-            
             # Queue Pull Logic: when a task is completed, pull the oldest queued task
             if self.assigned_to:
                 queued_task = Task.objects.filter(
                     assigned_to=self.assigned_to,
                     is_queued=True
-                ).order_by('created_at').first()
+                ).exclude(id=self.id).order_by('created_at').first()
                 
                 if queued_task:
                     queued_task.is_queued = False
