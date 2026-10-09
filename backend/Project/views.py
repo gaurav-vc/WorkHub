@@ -872,7 +872,16 @@ class TaskViewSet(TenantModelViewSet):
         ), reverse=True)
 
         if paginate and hasattr(paginator, 'page') and paginator.page:
-            return paginator.get_paginated_response(final_data)
+            resp = paginator.get_paginated_response(final_data)
+            status_counts = {"todo": 0, "in_progress": 0, "blocked": 0, "done": 0}
+            for m in combined_meta:
+                s = str(m.get('status') or 'pending').lower()
+                if s in ('completed', 'done'): status_counts['done'] += 1
+                elif s in ('in_progress', 'in-progress'): status_counts['in_progress'] += 1
+                elif s in ('delayed', 'blocked', 'on_hold'): status_counts['blocked'] += 1
+                else: status_counts['todo'] += 1
+            resp.data['status_counts'] = status_counts
+            return resp
         
         return Response(final_data)
 

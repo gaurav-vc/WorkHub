@@ -424,6 +424,14 @@ def admin_task_summary(request):
     task_qs = Task.objects.all()
     card_qs = Card.objects.all()
 
+    from core.tenant import get_current_organization
+    org = get_current_organization()
+    is_super = user.is_superuser or (auth_profile and auth_profile.user_type == 'super_user')
+    
+    if not is_super and org:
+        task_qs = task_qs.filter(organization=org)
+        card_qs = card_qs.filter(organization=org)
+
     if not is_admin:
         task_qs = task_qs.filter(Q(created_by=user) | Q(assigned_to=user) | Q(assignees=user))
         card_qs = card_qs.filter(Q(created_by=user) | Q(assignee=user))
@@ -456,30 +464,35 @@ def admin_task_summary(request):
         s = (s or 'pending').lower()
         if s in ('done', 'completed'): return 'completed'
         if s in ('in_progress', 'in-progress'): return 'in_progress'
+        if s in ('blocked', 'delayed', 'on_hold'): return 'blocked'
         return 'open'
 
     completed = 0
     in_progress = 0
+    blocked = 0
     open_tasks = 0
 
     for t in task_qs:
         s = map_status(t.status)
         if s == 'completed': completed += 1
         elif s == 'in_progress': in_progress += 1
+        elif s == 'blocked': blocked += 1
         else: open_tasks += 1
 
     for c in card_qs:
         s = map_status(c.status)
         if s == 'completed': completed += 1
         elif s == 'in_progress': in_progress += 1
+        elif s == 'blocked': blocked += 1
         else: open_tasks += 1
 
-    total = completed + in_progress + open_tasks
+    total = completed + in_progress + blocked + open_tasks
 
     return Response({
         "totalTasks": total,
         "completed": completed,
         "inProgress": in_progress,
+        "blocked": blocked,
         "open": open_tasks
     })
 
