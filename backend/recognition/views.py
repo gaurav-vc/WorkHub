@@ -12,6 +12,11 @@ class KudosViewSet(viewsets.ModelViewSet):
         user = self.request.user
         profile = getattr(user, 'auth_profile', None)
         
+        from core.tenant import get_current_site
+        site = get_current_site()
+        if site:
+            qs = qs.filter(site=site)
+        
         # Admins and managers can see all kudos
         if profile and profile.user_type in ['super_user', 'site_admin', 'manager']:
             return qs
@@ -34,16 +39,20 @@ class BirthdayViewSet(viewsets.ReadOnlyModelViewSet):
         from rest_framework.response import Response
         import datetime
         
-        from core.tenant import get_current_organization
+        from core.tenant import get_current_organization, get_current_site
         
         today = datetime.date.today()
         org = get_current_organization()
+        site = get_current_site()
         
-        # Get employees in this org with a date_of_birth
+        # Get employees in this org/site with a date_of_birth
+        qs = Employee.objects.filter(date_of_birth__isnull=False)
         if org:
-            employees = Employee.objects.filter(date_of_birth__isnull=False, organization=org)
-        else:
-            employees = Employee.objects.filter(date_of_birth__isnull=False)
+            qs = qs.filter(organization=org)
+        if site:
+            qs = qs.filter(site=site)
+            
+        employees = qs
         
         results = []
         for emp in employees:
