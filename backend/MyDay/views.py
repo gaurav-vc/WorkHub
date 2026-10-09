@@ -433,8 +433,13 @@ def admin_task_summary(request):
         card_qs = card_qs.filter(organization=org)
 
     if not is_admin:
-        task_qs = task_qs.filter(Q(created_by=user) | Q(assigned_to=user) | Q(assignees=user))
-        card_qs = card_qs.filter(Q(created_by=user) | Q(assignee=user))
+        assigned_q = Q(assigned_to=user) | Q(assignees=user)
+        unassigned_q = Q(created_by=user) & Q(assigned_to__isnull=True) & Q(assignees__isnull=True)
+        task_qs = task_qs.filter(assigned_q | unassigned_q)
+        
+        card_assigned_q = Q(assignee=user)
+        card_unassigned_q = Q(created_by=user) & Q(assignee__isnull=True)
+        card_qs = card_qs.filter(card_assigned_q | card_unassigned_q)
 
     created_by = request.GET.get('created_by')
     assigned_to = request.GET.get('assigned_to')
