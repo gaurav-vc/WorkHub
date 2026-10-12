@@ -21,7 +21,24 @@ SECRET_KEY = 'django-insecure-c&7j*58ngon#s44&#y^5jj60z=v--#(!-*kn+hw*jl5ic2)3ea
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = ['workhub.vibesandbox.live', '103.192.198.102', 'localhost', '127.0.0.1']
+ALLOWED_HOSTS = [
+    'workhub.vibesandbox.live',
+    'workhub.vibecopilot.ai',
+    '103.192.198.102',
+    'localhost',
+    '127.0.0.1',
+]
+
+CSRF_TRUSTED_ORIGINS = [
+    'https://workhub.vibesandbox.live',
+    'https://workhub.vibecopilot.ai',
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'http://localhost:8080',
+    'http://127.0.0.1:8080',
+    'http://127.0.0.1:8000',
+    'http://localhost:8000',
+]
 
 
 # Application definition
@@ -230,7 +247,7 @@ EMAIL_HOST_PASSWORD = 'atyp awcg zdfn ldov'
 DEFAULT_FROM_EMAIL = f'WorkHub <{EMAIL_HOST_USER}>'
 
 # Frontend URL (used in emails)
-FRONTEND_URL = 'https://workhub.vibesandbox.live/'
+FRONTEND_URL = os.environ.get('FRONTEND_URL', 'https://workhub.vibecopilot.ai/')
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'

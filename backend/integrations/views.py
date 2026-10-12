@@ -41,7 +41,12 @@ def microsoft_login(request):
             parsed = urlparse(referer)
             frontend_base = f"{parsed.scheme}://{parsed.netloc}"
     if not frontend_base:
-        frontend_base = "http://localhost:8080" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live"
+        if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri:
+            frontend_base = "http://localhost:8080"
+        elif 'vibesandbox.live' in redirect_uri:
+            frontend_base = "https://workhub.vibesandbox.live"
+        else:
+            frontend_base = getattr(settings, 'FRONTEND_URL', 'https://workhub.vibecopilot.ai').rstrip('/')
         
     state = f"{request.user.id}|{frontend_base}"
     
@@ -68,7 +73,11 @@ def microsoft_callback(request):
     state = urllib.parse.unquote(state)
     state_parts = state.split('|')
     user_id = state_parts[0]
-    frontend_base = state_parts[1] if len(state_parts) > 1 else ("http://localhost:5173" if 'localhost' in request.build_absolute_uri() else "https://workhub.vibesandbox.live")
+    frontend_base = state_parts[1] if len(state_parts) > 1 else (
+        "http://localhost:5173" if 'localhost' in request.build_absolute_uri()
+        else ("https://workhub.vibesandbox.live" if 'vibesandbox.live' in request.build_absolute_uri()
+        else getattr(settings, 'FRONTEND_URL', 'https://workhub.vibecopilot.ai').rstrip('/'))
+    )
         
     client_id = getattr(settings, 'AZURE_CLIENT_ID', None)
     client_secret = getattr(settings, 'AZURE_CLIENT_SECRET', None)
@@ -156,7 +165,12 @@ def google_login(request):
             parsed = urlparse(referer)
             frontend_base = f"{parsed.scheme}://{parsed.netloc}"
     if not frontend_base:
-        frontend_base = "http://localhost:5173" if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri else "https://workhub.vibesandbox.live"
+        if 'localhost' in redirect_uri or '127.0.0.1' in redirect_uri:
+            frontend_base = "http://localhost:5173"
+        elif 'vibesandbox.live' in redirect_uri:
+            frontend_base = "https://workhub.vibesandbox.live"
+        else:
+            frontend_base = getattr(settings, 'FRONTEND_URL', 'https://workhub.vibecopilot.ai').rstrip('/')
         
     state = f"{request.user.id}|{frontend_base}"
     
@@ -184,7 +198,11 @@ def google_callback(request):
     state = urllib.parse.unquote(state)
     state_parts = state.split('|')
     user_id = state_parts[0]
-    frontend_base = state_parts[1] if len(state_parts) > 1 else ("http://localhost:5173" if 'localhost' in request.build_absolute_uri() else "https://workhub.vibesandbox.live")
+    frontend_base = state_parts[1] if len(state_parts) > 1 else (
+        "http://localhost:5173" if 'localhost' in request.build_absolute_uri()
+        else ("https://workhub.vibesandbox.live" if 'vibesandbox.live' in request.build_absolute_uri()
+        else getattr(settings, 'FRONTEND_URL', 'https://workhub.vibecopilot.ai').rstrip('/'))
+    )
         
     client_id = getattr(settings, 'GOOGLE_CLIENT_ID', None)
     client_secret = getattr(settings, 'GOOGLE_CLIENT_SECRET', None)
