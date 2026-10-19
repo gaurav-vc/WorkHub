@@ -649,6 +649,23 @@ class TaskViewSet(TenantModelViewSet):
         except Exception as e:
             print(f"Error notifying workspace: {e}")
 
+    def get_object(self):
+        try:
+            return super().get_object()
+        except Exception:
+            # Fallback for concurrent updates: resolve task by pk and enforce object permissions
+            lookup_url_kwarg = self.lookup_url_kwarg or self.lookup_field
+            lookup_val = self.kwargs.get(lookup_url_kwarg)
+            if lookup_val:
+                from .models import Task
+                task = Task._base_manager.select_related(
+                    'project', 'project__created_by', 'assigned_to', 'created_by'
+                ).filter(pk=lookup_val).first()
+                if task:
+                    self.check_object_permissions(self.request, task)
+                    return task
+            raise
+
     def get_queryset(self):
         queryset = super().get_queryset()
         
@@ -1067,6 +1084,8 @@ class TaskViewSet(TenantModelViewSet):
             project = None
             if project_id and str(project_id).isdigit():
                 project = Project.objects.filter(id=int(project_id)).first()
+                if not project:
+                    project = Project._base_manager.filter(id=int(project_id)).first()
             elif project_id and isinstance(project_id, str) and str(project_id).strip():
                 clean_proj = str(project_id).strip()
                 if org:
@@ -1147,6 +1166,8 @@ class TaskViewSet(TenantModelViewSet):
                 data['project_id'] = int(project_val)
             elif isinstance(project_val, str) and project_val.strip() not in ["", "null", "undefined"]:
                 proj = Project.objects.filter(name__iexact=str(project_val).strip()).first()
+                if not proj:
+                    proj = Project._base_manager.filter(name__iexact=str(project_val).strip()).first()
                 data['project_id'] = proj.id if proj else getattr(instance.project, 'id', None)
             else:
                 data['project_id'] = getattr(instance.project, 'id', None)

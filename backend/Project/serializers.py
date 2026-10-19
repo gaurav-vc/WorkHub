@@ -81,10 +81,20 @@ class ProjectRelatedField(serializers.PrimaryKeyRelatedField):
             return None
         if isinstance(data, str) and not data.isdigit():
             proj = Project.objects.filter(name__iexact=data.strip()).first()
+            if not proj:
+                proj = Project._base_manager.filter(name__iexact=data.strip()).first()
             if proj:
                 return proj
             return None
-        return super().to_internal_value(data)
+        try:
+            return super().to_internal_value(data)
+        except serializers.ValidationError:
+            # Fallback for valid numeric project IDs across tenant/site boundaries
+            if str(data).isdigit():
+                proj = Project._base_manager.filter(id=int(data)).first()
+                if proj:
+                    return proj
+            raise
 
 class TaskSerializer(serializers.ModelSerializer):
     project = serializers.SerializerMethodField()

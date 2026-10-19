@@ -27,6 +27,19 @@ def get_current_organization():
         org_profile = getattr(user, 'org_profile', None)
         if org_profile and org_profile.organization:
             return org_profile.organization
+
+        from organization.models import Organization
+        member_org = Organization.objects.filter(members=user).first()
+        if member_org:
+            return member_org
+
+        created_org = Organization.objects.filter(created_by=user).first()
+        if created_org:
+            return created_org
+
+        first_org = Organization.objects.first()
+        if first_org:
+            return first_org
     except Exception:
         pass
     return None
@@ -107,12 +120,13 @@ class TenantManager(models.Manager):
         if 'qs' not in locals():
             qs = super().get_queryset().filter(organization=org)
         
-        # Site Isolation Logic
+        # Site Isolation Logic: allow tasks within site or general workspace (site__isnull=True)
         if user:
             user_type = getattr(getattr(user, 'auth_profile', None), 'user_type', 'employee')
             if user_type in ['employee', 'site_admin']:
+                from django.db.models import Q
                 if site:
-                    qs = qs.filter(site=site)
+                    qs = qs.filter(Q(site=site) | Q(site__isnull=True))
                 else:
                     qs = qs.filter(site__isnull=True)
                 

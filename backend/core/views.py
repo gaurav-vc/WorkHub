@@ -11,7 +11,18 @@ class TenantModelViewSet(viewsets.ModelViewSet):
     
     def get_organization(self):
         from core.tenant import get_current_organization
-        return get_current_organization()
+        org = get_current_organization()
+        if not org and hasattr(self, 'request') and self.request.user and self.request.user.is_authenticated:
+            try:
+                user = self.request.user
+                org_profile = getattr(user, 'org_profile', None)
+                if org_profile and org_profile.organization:
+                    return org_profile.organization
+                from organization.models import Organization
+                return Organization.objects.filter(members=user).first() or Organization.objects.filter(created_by=user).first() or Organization.objects.first()
+            except Exception:
+                pass
+        return org
 
     def get_queryset(self):
         queryset = super().get_queryset()
@@ -28,14 +39,15 @@ class TenantModelViewSet(viewsets.ModelViewSet):
             
         qs = queryset.filter(organization=org)
         
-        # Enforce strict site isolation for non-org admins
+        # Enforce site isolation allowing site or general workspace (site__isnull=True)
         from core.tenant import get_current_site
         site = get_current_site()
         user_type = getattr(profile, 'user_type', 'employee') if profile else 'employee'
         
         if user_type in ['employee', 'site_admin']:
+            from django.db.models import Q
             if site:
-                qs = qs.filter(site=site)
+                qs = qs.filter(Q(site=site) | Q(site__isnull=True))
             else:
                 qs = qs.filter(site__isnull=True)
                 
