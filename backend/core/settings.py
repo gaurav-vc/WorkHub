@@ -27,6 +27,7 @@ ALLOWED_HOSTS = [
     '103.192.198.102',
     'localhost',
     '127.0.0.1',
+    'testserver',
 ]
 
 CSRF_TRUSTED_ORIGINS = [
@@ -85,8 +86,13 @@ INSTALLED_APPS = [
     'mom',
     'rest_framework_simplejwt',
     'learning_center',
-    'core'
+    'core',
+    'apps.bulk_tasks',
 ]
+
+# Feature flag for Bulk Task Update V2 (Default: False)
+ENABLE_BULK_TASK_UPDATE_V2 = False
+
 
 ASGI_APPLICATION = 'core.asgi.application'
 CHANNEL_LAYERS = {
@@ -132,21 +138,26 @@ WSGI_APPLICATION = 'core.wsgi.application'
 # https://docs.djangoproject.com/en/5.2/ref/settings/#databases
 
 import os
-import dj_database_url
 
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+        'CONN_HEALTH_CHECKS': True,
+        'OPTIONS': {
+            'timeout': 60,
+        },
     }
 }
 
-# If a DATABASE_URL environment variable is provided (e.g. on the live server), 
-# it will override the sqlite3 database above and connect to pip greSQL.
-# conn_max_age=0 is REQUIRED for Supabase and PgBouncer to prevent intermittent data drops
-db_from_env = dj_database_url.config(conn_max_age=0)
-if db_from_env:
-    DATABASES['default'].update(db_from_env)
+# Load SQLite concurrency optimizations and connection PRAGMA listeners
+import core.concurrency
+
+
+AUTHENTICATION_BACKENDS = [
+    'authentication.backends.CaseInsensitiveModelBackend',
+    'django.contrib.auth.backends.ModelBackend',
+]
 
 
 # Password validation
@@ -204,7 +215,8 @@ REST_FRAMEWORK = {
     ),
     'DEFAULT_FILTER_BACKENDS': [
         'django_filters.rest_framework.DjangoFilterBackend'
-    ]
+    ],
+    'EXCEPTION_HANDLER': 'Project.exception_handlers.custom_exception_handler',
 }
 
 from datetime import timedelta

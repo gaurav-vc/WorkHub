@@ -1,5 +1,55 @@
+import datetime
 from rest_framework import serializers
 from .models import Project, ActivityLog, ProjectMilestone, Task, TaskComment, TaskAttachment, TaskChat
+
+def parse_flexible_time(val):
+    if val is None:
+        return None
+    if isinstance(val, datetime.time):
+        return val
+    if isinstance(val, datetime.datetime):
+        return val.time()
+        
+    val_str = str(val).strip()
+    if not val_str or val_str.lower() in ['', 'null', 'undefined', 'none', 'eod', '—', '-']:
+        return None
+        
+    formats = [
+        '%H:%M:%S',
+        '%H:%M',
+        '%I:%M %p',
+        '%I:%M%p',
+        '%I:%M:%S %p',
+        '%I:%M:%S%p',
+    ]
+    for fmt in formats:
+        try:
+            return datetime.datetime.strptime(val_str, fmt).time()
+        except ValueError:
+            pass
+            
+    try:
+        from django.utils.dateparse import parse_time
+        t = parse_time(val_str)
+        if t is not None:
+            return t
+    except Exception:
+        pass
+
+    return None
+
+class FlexibleTimeField(serializers.TimeField):
+    def to_internal_value(self, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            cleaned = value.strip()
+            if not cleaned or cleaned.lower() in ['null', 'undefined', 'none', 'eod', '—', '-']:
+                return None
+            parsed = parse_flexible_time(cleaned)
+            if parsed is not None:
+                return parsed
+        return super().to_internal_value(value)
 
 class TaskCommentSerializer(serializers.ModelSerializer):
     user_name = serializers.CharField(source='user.get_full_name', read_only=True)
@@ -25,9 +75,21 @@ class TaskChatSerializer(serializers.ModelSerializer):
             return obj.user.get_full_name() or obj.user.username
         return "Unknown"
 
+class ProjectRelatedField(serializers.PrimaryKeyRelatedField):
+    def to_internal_value(self, data):
+        if data is None or data == '' or str(data).lower() in ['null', 'undefined', 'none']:
+            return None
+        if isinstance(data, str) and not data.isdigit():
+            proj = Project.objects.filter(name__iexact=data.strip()).first()
+            if proj:
+                return proj
+            return None
+        return super().to_internal_value(data)
+
 class TaskSerializer(serializers.ModelSerializer):
     project = serializers.SerializerMethodField()
-    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
+    project_id = ProjectRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
+    due_time = FlexibleTimeField(required=False, allow_null=True)
     dueTime = serializers.SerializerMethodField()
     raw_due_time = serializers.TimeField(source='due_time', read_only=True)
     
@@ -41,10 +103,14 @@ class TaskSerializer(serializers.ModelSerializer):
     assignee_detail = serializers.SerializerMethodField()
     assignees_detail = serializers.SerializerMethodField()
     health_status = serializers.ReadOnlyField()
+    isUrgent = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
         fields = '__all__'
+
+    def get_isUrgent(self, obj):
+        return getattr(obj, 'is_urgent', False)
 
     def get_created_by_name(self, obj):
         if obj.created_by:
@@ -119,10 +185,12 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
     assignees_detail = serializers.SerializerMethodField()
     health_status = serializers.ReadOnlyField()
     project = serializers.SerializerMethodField()
-    project_id = serializers.PrimaryKeyRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
+    project_id = ProjectRelatedField(queryset=Project.objects.all(), source='project', required=False, allow_null=True)
+    due_time = FlexibleTimeField(required=False, allow_null=True)
     raw_due_time = serializers.TimeField(source='due_time', read_only=True)
 
     created_by_name = serializers.SerializerMethodField()
+    isUrgent = serializers.SerializerMethodField()
 
     class Meta:
         model = Task
@@ -131,8 +199,12 @@ class SimpleTaskSerializer(serializers.ModelSerializer):
             'type', 'platform',
             'time_interval_minutes', 'assignee_detail', 'assignees_detail', 
             'health_status', 'created_at', 'estimated_effort', 
-            'effort_unit', 'duration', 'project', 'project_id', 'created_by_name', 'raw_due_time'
+            'effort_unit', 'duration', 'project', 'project_id', 'created_by_name', 'raw_due_time',
+            'is_urgent', 'isUrgent'
         ]
+
+    def get_isUrgent(self, obj):
+        return getattr(obj, 'is_urgent', False)
 
     def get_created_by_name(self, obj):
         if obj.created_by:

@@ -30,6 +30,7 @@ urlpatterns = [
     # Legacy / top-level API routes moved from api app
     path('api/', core_views.home, name='home'),
     path('api/debug/', core_views.debug, name='debug'),
+    path('api/api-docs/', core_views.api_documentation, name='api_documentation'),
     path('api/', include(router.urls)),
 
     # 2. BROAD / CATCH-ALL PATHS LAST

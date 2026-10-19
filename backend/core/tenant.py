@@ -145,16 +145,39 @@ class TenantModel(models.Model):
 
     def save(self, *args, **kwargs):
         if not self.organization_id:
-            org = get_current_organization()
-            if org:
-                self.organization = org
+            # 1. Inherit from project if available
+            if hasattr(self, 'project') and self.project and getattr(self.project, 'organization_id', None):
+                self.organization_id = self.project.organization_id
             else:
-                user = get_current_user()
-                
-                if user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
-                    raise PermissionDenied("Super Admins cannot create tenant-specific records without an explicit organization.")
-                elif user:
-                    raise PermissionDenied("You must belong to an organization to create records.")
+                org = get_current_organization()
+                if org:
+                    self.organization = org
+                else:
+                    user = get_current_user()
+                    fallback_org = None
+                    if user and user.is_authenticated:
+                        try:
+                            org_profile = getattr(user, 'org_profile', None)
+                            if org_profile and org_profile.organization:
+                                fallback_org = org_profile.organization
+                            else:
+                                from organization.models import Organization
+                                fallback_org = Organization.objects.filter(members=user).first() or Organization.objects.first()
+                        except Exception:
+                            pass
+                    
+                    if fallback_org:
+                        self.organization = fallback_org
+                    elif user and getattr(getattr(user, 'auth_profile', None), 'user_type', None) == 'super_user':
+                        # Allow super admin to proceed if no organization exists in system yet
+                        pass
+                    elif user and user.is_authenticated:
+                        from organization.models import Organization
+                        first_org = Organization.objects.first()
+                        if first_org:
+                            self.organization = first_org
+                        else:
+                            raise PermissionDenied("You must belong to an organization to create records.")
                     
         # Also auto-assign site if it's available and not already set
         if not self.site_id:

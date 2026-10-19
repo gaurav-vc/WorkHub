@@ -106,6 +106,7 @@ class Task(TenantModel):
     started_at = models.DateTimeField(null=True, blank=True)
     is_queued = models.BooleanField(default=False)
     deadline_alert_sent = models.BooleanField(default=False)
+    is_urgent = models.BooleanField(default=False)
     
     start_day = models.IntegerField(default=0)
     duration = models.IntegerField(default=3)
@@ -147,6 +148,7 @@ class Task(TenantModel):
         is_new = self.pk is None
         status_changed_to_done = False
         status_changed_to_delayed = False
+        status_changed_to_active = False
         newly_assigned_user = None
 
         if not is_new:
@@ -154,12 +156,19 @@ class Task(TenantModel):
             old_task = Task.all_objects.get(pk=self.pk)
             if old_task.status not in ['done', 'completed'] and self.status in ['done', 'completed']:
                 status_changed_to_done = True
+                self.completion_date = timezone.now()
+            elif old_task.status in ['done', 'completed'] and self.status not in ['done', 'completed']:
+                self.completion_date = None
             if old_task.status != 'delayed' and self.status == 'delayed':
                 status_changed_to_delayed = True
             if old_task.assigned_to != self.assigned_to and self.assigned_to:
                 newly_assigned_user = self.assigned_to
+            if old_task.status not in ['in_progress', 'in-progress'] and self.status in ['in_progress', 'in-progress']:
+                status_changed_to_active = True
         elif self.status in ['done', 'completed']:
             status_changed_to_done = True
+            if not self.completion_date:
+                self.completion_date = timezone.now()
             if self.assigned_to:
                 newly_assigned_user = self.assigned_to
         elif self.status == 'delayed':
@@ -205,11 +214,14 @@ class Task(TenantModel):
                 pass
 
             # Count active tasks for this user (not queued, not done)
-            if is_new or newly_assigned_user:
-                active_count = Task.objects.filter(
+            if is_new or newly_assigned_user or status_changed_to_active:
+                active_qs = Task.objects.filter(
                     assigned_to=self.assigned_to,
                     is_queued=False
-                ).exclude(status__in=['done', 'completed', 'closed']).count()
+                ).exclude(status__in=['done', 'completed', 'closed'])
+                if self.pk:
+                    active_qs = active_qs.exclude(pk=self.pk)
+                active_count = active_qs.count()
                 
                 if active_count >= max_active_tasks:
                     self.is_queued = True
@@ -222,48 +234,66 @@ class Task(TenantModel):
                 if not self.is_queued and not self.started_at:
                     self.started_at = timezone.now()
 
-        if self.status in ['done', 'completed'] and not self.completion_date:
-            self.completion_date = timezone.now()
+        if self.status in ['done', 'completed']:
+            self.is_queued = False
+            if not self.completion_date:
+                self.completion_date = timezone.now()
             
         super().save(*args, **kwargs)
 
         if newly_assigned_user and newly_assigned_user != self.created_by:
             try:
                 from workspace.models import Notification
-                from django.db import transaction
-                with transaction.atomic():
-                    Notification.objects.create(
-                        user=newly_assigned_user,
-                        type="task_assigned",
-                        title="Task Assigned",
-                        message=f"You have been assigned to task '{self.title}'",
-                        link="/tasks/my-day"
-                    )
+                Notification.objects.create(
+                    user=newly_assigned_user,
+                    type="task_assigned",
+                    title="Task Assigned",
+                    message=f"You have been assigned to task '{self.title}'",
+                    link="/tasks/my-day"
+                )
             except Exception as e:
-                print(f"Error creating notification: {e}")
+                pass
 
         if status_changed_to_done:
-            # Queue Pull Logic: when a task is completed, pull the oldest queued task
+            # Queue Pull Logic: when a task is completed, pull the oldest queued task (never pull already completed/closed tasks)
             if self.assigned_to:
-                queued_task = Task.objects.filter(
-                    assigned_to=self.assigned_to,
-                    is_queued=True
-                ).exclude(id=self.id).order_by('created_at').first()
-                
-                if queued_task:
-                    queued_task.is_queued = False
-                    queued_task.status = 'in_progress'
-                    queued_task.started_at = timezone.now()
-                    queued_task.save()
+                try:
+                    queued_task = Task.objects.filter(
+                        assigned_to=self.assigned_to,
+                        is_queued=True
+                    ).exclude(id=self.id).exclude(status__in=['done', 'completed', 'closed']).order_by('created_at').first()
+                    
+                    if queued_task:
+                        queued_task.is_queued = False
+                        queued_task.status = 'in_progress'
+                        queued_task.started_at = timezone.now()
+                        queued_task.save()
+                except Exception:
+                    pass
             
-            target_user = self.assigned_to or self.created_by
-            if target_user and hasattr(target_user, 'auth_profile'):
-                profile = target_user.auth_profile
-                profile.points += 50
-                new_level = (profile.points // 100) + 1
-                if new_level > profile.level:
-                    profile.level = new_level
-                profile.save()
+            try:
+                target_user = self.assigned_to or self.created_by
+                if target_user and hasattr(target_user, 'auth_profile'):
+                    profile = target_user.auth_profile
+                    profile.points += 50
+                    new_level = (profile.points // 100) + 1
+                    if new_level > profile.level:
+                        profile.level = new_level
+                    profile.save()
+            except Exception:
+                pass
+
+            try:
+                from workspace.models import TeamActivity
+                actor = self.assigned_to or self.created_by
+                if actor:
+                    TeamActivity.objects.create(
+                        user=actor,
+                        action='completed task',
+                        target=self.title
+                    )
+            except Exception:
+                pass
 
         if status_changed_to_delayed:
             self._trigger_ai_delayed_workflow()

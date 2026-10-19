@@ -87,3 +87,57 @@ def debug(request):
         "approvals_for_user": Approval.objects.filter(approver=user, status='pending').count(),
         "has_profile": hasattr(user, 'profile'),
     })
+
+
+@api_view(['GET'])
+def api_documentation(request):
+    """
+    Public API specification and endpoint directory.
+    Accessible without authentication on live servers and localhost.
+    """
+    host = request.build_absolute_uri('/')[:-1]
+    return Response({
+        "name": "WorkHub Enterprise REST API",
+        "version": "2.4.0",
+        "status": "online",
+        "base_url": f"{host}/api",
+        "interactive_docs": f"{host}/api/docs",
+        "postman_collection": f"{host}/postman_collection.json",
+        "endpoints": {
+            "authentication": {
+                "login": f"{host}/api/auth/login/",
+                "register": f"{host}/api/auth/register/",
+                "me": f"{host}/api/auth/me/",
+                "logout": f"{host}/api/auth/logout/"
+            },
+            "tasks": {
+                "list": f"{host}/api/tasks/",
+                "create": f"{host}/api/tasks/",
+                "detail": f"{host}/api/tasks/{{id}}/",
+                "partial_update": f"{host}/api/tasks/{{id}}/"
+            },
+            "projects": {
+                "list": f"{host}/api/projects/",
+                "create": f"{host}/api/projects/create/",
+                "detail": f"{host}/api/projects/{{id}}/"
+            },
+            "chat": {
+                "channels": f"{host}/api/chat/channels/",
+                "messages": f"{host}/api/chat/messages/?channel_id={{channel_id}}",
+                "send_message": f"{host}/api/chat/messages/"
+            },
+            "custom_boards": {
+                "boards": f"{host}/api/boards/"
+            },
+            "calendar": {
+                "meetings": f"{host}/api/calendar/meetings/"
+            },
+            "workflows": {
+                "list": f"{host}/api/workflows/"
+            },
+            "hr": {
+                "requests": f"{host}/api/hr/requests/",
+                "directory": f"{host}/api/directory/"
+            }
+        }
+    })

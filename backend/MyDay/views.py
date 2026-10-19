@@ -262,7 +262,8 @@ def handle_approval(request, approval_id):
 def create_task(request):
     user = request.user
         
-    try:
+    from core.concurrency import robust_db_write
+    def _create_card_op():
         board, _ = Board.objects.get_or_create(
             title="My Board",
             owner=user,
@@ -273,7 +274,7 @@ def create_task(request):
             title="Todo",
             defaults={'order': 0, 'color': 'bg-primary'}
         )
-        card = Card.objects.create(
+        return Card.objects.create(
             title=request.data.get('title', 'Untitled Task'),
             priority=request.data.get('priority', 'P3'),
             status=request.data.get('status', 'pending'),
@@ -282,6 +283,9 @@ def create_task(request):
             created_by=user,
             due_date=timezone.now().date()
         )
+
+    try:
+        card = robust_db_write(_create_card_op)
         return Response({"message": "Task created", "task_id": card.id})
     except Exception as e:
         return Response({"error": str(e)}, status=400)
@@ -298,28 +302,36 @@ def toggle_task(request, task_id):
             card.status = new_status
         else:
             card.status = 'done' if card.status != 'done' else 'pending'
-        card.save()
+        
+        from core.concurrency import robust_db_write
+        def _toggle_op():
+            card.save()
 
-        # Update Points System
-        if old_status != 'done' and card.status == 'done':
-            # Award points
-            from hr_requests.models import LeaderboardEntry
-            user = card.assignee or card.created_by
-            if user:
-                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
-                entry.points += 10
-                entry.level = (entry.points // 100) + 1
-                entry.save()
-        elif old_status == 'done' and card.status != 'done':
-            # Deduct points
-            from hr_requests.models import LeaderboardEntry
-            user = card.assignee or card.created_by
-            if user:
-                entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
-                entry.points = max(0, entry.points - 10)
-                entry.level = (entry.points // 100) + 1
-                entry.save()
+            # Update Points System
+            if old_status != 'done' and card.status == 'done':
+                from hr_requests.models import LeaderboardEntry
+                user = card.assignee or card.created_by
+                if user:
+                    try:
+                        entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                        entry.points += 10
+                        entry.level = (entry.points // 100) + 1
+                        entry.save()
+                    except Exception:
+                        pass
+            elif old_status == 'done' and card.status != 'done':
+                from hr_requests.models import LeaderboardEntry
+                user = card.assignee or card.created_by
+                if user:
+                    try:
+                        entry, _ = LeaderboardEntry.objects.get_or_create(user=user)
+                        entry.points = max(0, entry.points - 10)
+                        entry.level = (entry.points // 100) + 1
+                        entry.save()
+                    except Exception:
+                        pass
 
+        robust_db_write(_toggle_op)
         return Response({"message": "Task status updated", "status": card.status})
     except Card.DoesNotExist:
         return Response({"error": "Task not found"}, status=404)

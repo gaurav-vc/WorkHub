@@ -12,6 +12,11 @@ class StandardResultsSetPagination(PageNumberPagination):
     page_size_query_param = 'page_size'
     max_page_size = 100
 
+class ProjectListPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
 @api_view(['GET', 'POST'])
 def project_list_create(request):
     visible_users = get_visible_users(request.user)
@@ -60,7 +65,7 @@ def project_list_create(request):
         paginate = request.GET.get('paginate', 'true').lower() != 'false'
         
         if paginate:
-            paginator = StandardResultsSetPagination()
+            paginator = ProjectListPagination()
             paginated_projects = paginator.paginate_queryset(projects, request)
             serializer = ProjectListSerializer(paginated_projects, many=True)
             return paginator.get_paginated_response(serializer.data)
@@ -311,30 +316,37 @@ def add_task(request, project_id):
         except ApiTask.DoesNotExist:
             pass
 
-    task = ApiTask.objects.create(**task_kwargs)
-    
-    if 'assignees' in request.data:
-        assignees_data = request.data['assignees']
-        if isinstance(assignees_data, list):
-            from django.contrib.auth.models import User
-            users = User.objects.filter(id__in=assignees_data)
-            task.assignees.set(users)
+    from core.concurrency import robust_db_write
+    def _create_task():
+        t = ApiTask.objects.create(**task_kwargs)
+        if 'assignees' in request.data:
+            assignees_data = request.data['assignees']
+            if isinstance(assignees_data, list):
+                from django.contrib.auth.models import User
+                users = User.objects.filter(id__in=assignees_data)
+                t.assignees.set(users)
+        return t
+
+    task = robust_db_write(_create_task)
 
     # Recalculate if it's not a subtask, or if you want subtasks to count
     if not parent_task_id:
         new_progress = recalculate_project_progress(project)
     else:
-        new_progress = project.progress
+        new_progress = getattr(project, 'progress', 0)
         
     # Generate audit log
     from workspace.models import TeamActivity
     if request.user.is_authenticated:
-        action = 'created subtask' if parent_task_id else 'created task'
-        TeamActivity.objects.create(
-            user=request.user,
-            action=action,
-            target=task.title
-        )
+        try:
+            action = 'created subtask' if parent_task_id else 'created task'
+            TeamActivity.objects.create(
+                user=request.user,
+                action=action,
+                target=task.title
+            )
+        except Exception:
+            pass
 
     return Response({
         "message": "Task added successfully.", 
@@ -345,24 +357,29 @@ def add_task(request, project_id):
 from django.db import transaction
 
 def recalculate_project_progress(project):
-    with transaction.atomic():
-        # Lock the project row so rapid, simultaneous updates queue sequentially instead of crashing
-        locked_project = Project.objects.select_for_update().get(id=project.id)
-        
-        total_tasks = locked_project.api_tasks.count()
+    from core.concurrency import robust_db_write
+    def _do_calc():
+        total_tasks = project.api_tasks.count()
         if total_tasks == 0:
-            locked_project.progress = 0
+            new_prog = 0
         else:
-            done_tasks = locked_project.api_tasks.filter(status__in=['done', 'completed']).count()
-            locked_project.progress = int((done_tasks / total_tasks) * 100)
+            done_tasks = project.api_tasks.filter(status__in=['done', 'completed']).count()
+            new_prog = int((done_tasks / total_tasks) * 100)
             
-        locked_project.save(update_fields=['progress'])
-        return locked_project.progress
+        Project.objects.filter(id=project.id).update(progress=new_prog)
+        project.progress = new_prog
+        return new_prog
+
+    try:
+        return robust_db_write(_do_calc)
+    except Exception as e:
+        return getattr(project, 'progress', 0)
 
 @api_view(['GET', 'PATCH', 'DELETE'])
 def update_task(request, task_id):
     from .models import Task as ApiTask
     from .serializers import TaskSerializer
+    from core.concurrency import robust_db_write
     try:
         task = ApiTask.objects.get(id=task_id)
     except ApiTask.DoesNotExist:
@@ -374,7 +391,7 @@ def update_task(request, task_id):
     project = task.project
 
     if request.method == 'DELETE':
-        task.delete()
+        robust_db_write(task.delete)
         new_progress = recalculate_project_progress(project) if project else 0
         return Response({"message": "Task deleted successfully.", "project_progress": new_progress}, status=200)
 
@@ -385,9 +402,15 @@ def update_task(request, task_id):
         elif data.get('assigned_to') == 'unassigned':
             data['assigned_to'] = None
 
+        if 'dueTime' in data or 'due_time' in data:
+            from .serializers import parse_flexible_time
+            raw_time = data.get('due_time') if 'due_time' in data else data.get('dueTime')
+            data['due_time'] = parse_flexible_time(raw_time)
+        data.pop('dueTime', None)
+
         serializer = TaskSerializer(task, data=data, partial=True)
         if serializer.is_valid():
-            serializer.save()
+            robust_db_write(serializer.save)
             new_progress = recalculate_project_progress(project) if project else 0
             
             # Additional response info that the frontend relies on
@@ -397,11 +420,15 @@ def update_task(request, task_id):
             
             from workspace.models import TeamActivity
             if request.user.is_authenticated:
-                TeamActivity.objects.create(
-                    user=request.user,
-                    action='updated task',
-                    target=task.title
-                )
+                try:
+                    act = 'completed task' if task.status in ['done', 'completed'] else 'updated task'
+                    TeamActivity.objects.create(
+                        user=request.user,
+                        action=act,
+                        target=task.title
+                    )
+                except Exception:
+                    pass
             
             return Response(response_data, status=200)
         
@@ -439,6 +466,7 @@ def upload_task_attachment(request, task_id):
 @api_view(['POST'])
 def add_subtask(request, task_id):
     from .models import Task as ApiTask
+    from core.concurrency import robust_db_write
     try:
         task = ApiTask.objects.get(id=task_id)
     except ApiTask.DoesNotExist:
@@ -447,7 +475,7 @@ def add_subtask(request, task_id):
     title = request.data.get('title')
     if title:
         # Create a subtask
-        ApiTask.objects.create(
+        robust_db_write(lambda: ApiTask.objects.create(
             title=title,
             parent_task=task,
             project=task.project,
@@ -456,13 +484,14 @@ def add_subtask(request, task_id):
             status='pending',
             organization=getattr(task, 'organization', None),
             site=getattr(task, 'site', None)
-        )
+        ))
         return Response({"status": "subtask added"})
     return Response({"error": "title required"}, status=400)
 
 @api_view(['POST'])
 def add_checklist(request, task_id):
     from .models import Task as ApiTask, TaskChecklist
+    from core.concurrency import robust_db_write
     try:
         task = ApiTask.objects.get(id=task_id)
     except ApiTask.DoesNotExist:
@@ -470,13 +499,14 @@ def add_checklist(request, task_id):
         
     title = request.data.get('title')
     if title:
-        TaskChecklist.objects.create(task=task, title=title)
+        robust_db_write(lambda: TaskChecklist.objects.create(task=task, title=title))
         return Response({"status": "checklist added"})
     return Response({"error": "title required"}, status=400)
 
 @api_view(['POST'])
 def toggle_checklist(request, task_id):
     from .models import Task as ApiTask, TaskChecklist
+    from core.concurrency import robust_db_write
     try:
         task = ApiTask.objects.get(id=task_id)
     except ApiTask.DoesNotExist:
@@ -486,7 +516,7 @@ def toggle_checklist(request, task_id):
     try:
         ck = TaskChecklist.objects.get(id=checklist_id, task=task)
         ck.is_completed = not ck.is_completed
-        ck.save()
+        robust_db_write(ck.save)
         return Response({"status": "toggled", "is_completed": ck.is_completed})
     except TaskChecklist.DoesNotExist:
         return Response({"error": "checklist not found"}, status=404)
@@ -556,7 +586,11 @@ def edit_comment(request, task_id):
 from core.views import TenantModelViewSet
 from rest_framework.permissions import IsAuthenticated
 from rest_framework import status
+from rest_framework.decorators import action
+from rest_framework.parsers import MultiPartParser, FormParser, JSONParser
 import json
+import csv
+import io
 
 class TaskViewSet(TenantModelViewSet):
     from .models import Task
@@ -681,21 +715,12 @@ class TaskViewSet(TenantModelViewSet):
         user = request.user
 
         from django.db.models import Q
+        from boards.models import Card
+
         if search:
             queryset = queryset.filter(Q(title__icontains=search) | Q(description__icontains=search))
         if priority and priority != 'all':
             queryset = queryset.filter(priority=priority)
-        if status_filter and status_filter != 'all':
-            if status_filter == 'todo':
-                queryset = queryset.filter(status__in=["pending", "open", "planning", "todo"])
-            elif status_filter == 'in-progress':
-                queryset = queryset.filter(status="in_progress")
-            elif status_filter == 'blocked':
-                queryset = queryset.filter(status__in=["delayed", "on_hold"])
-            elif status_filter == 'done':
-                queryset = queryset.filter(status__in=["completed", "done"])
-            else:
-                queryset = queryset.filter(status=status_filter)
         
         if assignee and assignee != 'all':
             if assignee == 'unassigned':
@@ -716,11 +741,10 @@ class TaskViewSet(TenantModelViewSet):
             
         if view_mode == 'my_tasks':
             assigned_q = Q(assigned_to=user) | Q(assignees=user)
-            unassigned_q = Q(created_by=user) & Q(assigned_to__isnull=True) & Q(assignees__isnull=True)
+            unassigned_q = Q(created_by=user) & Q(assigned_to__isnull=True)
             queryset = queryset.filter(assigned_q | unassigned_q)
 
         if start_date:
-            print(f"DEBUG: Filtering with start_date={start_date}")
             try:
                 from datetime import datetime, timedelta
                 from django.utils import timezone
@@ -741,19 +765,12 @@ class TaskViewSet(TenantModelViewSet):
                 print(f"Error parsing end_date: {e}")
 
         queryset = queryset.distinct()
-        
-        # Fast query for Tasks (IDs and sorting fields only)
-        tasks_meta = list(queryset.values('id', 'created_at', 'status'))
-        for t in tasks_meta:
-            t['type'] = 'task'
 
-        cards_meta = []
-        # Fast query for Board Cards (IDs and sorting fields only)
+        # Build card_q with same base filters
+        card_q = Q()
         if user.is_authenticated:
-            from boards.models import Card
             org = self.get_organization()
             global_access = self._has_global_access(user)
-            
             card_q = Q(organization=org)
             if not global_access:
                 card_q &= (Q(assignee=user) | Q(created_by=user))
@@ -762,17 +779,6 @@ class TaskViewSet(TenantModelViewSet):
                 card_q &= (Q(title__icontains=search) | Q(description__icontains=search))
             if priority and priority != 'all':
                 card_q &= Q(priority=priority)
-            if status_filter and status_filter != 'all':
-                if status_filter == 'todo':
-                    card_q &= Q(status__in=["pending", "todo", "open"])
-                elif status_filter == 'in-progress':
-                    card_q &= Q(status="in_progress")
-                elif status_filter == 'blocked':
-                    card_q &= Q(status__in=["delayed", "blocked", "on_hold"])
-                elif status_filter == 'done':
-                    card_q &= Q(status__in=["completed", "done"])
-                else:
-                    card_q &= Q(status=status_filter)
             if assignee and assignee != 'all':
                 if assignee == 'unassigned':
                     card_q &= Q(assignee__isnull=True)
@@ -785,7 +791,7 @@ class TaskViewSet(TenantModelViewSet):
                 
             if start_date:
                 try:
-                    from datetime import datetime, timedelta
+                    from datetime import datetime
                     from django.utils import timezone
                     start_dt = datetime.strptime(start_date.split('T')[0], '%Y-%m-%d')
                     start_dt = timezone.make_aware(start_dt)
@@ -801,7 +807,48 @@ class TaskViewSet(TenantModelViewSet):
                     card_q &= Q(created_at__lte=end_dt)
                 except Exception:
                     pass
-                
+
+        # Calculate stable status counts across ALL tasks and cards before status_filter is applied
+        status_counts = {"todo": 0, "in_progress": 0, "blocked": 0, "done": 0}
+        tasks_status_list = list(queryset.values_list('status', flat=True))
+        cards_status_list = list(Card.objects.filter(card_q).values_list('status', flat=True)) if user.is_authenticated else []
+        for s in tasks_status_list + cards_status_list:
+            s_str = str(s or 'pending').lower()
+            if s_str in ('completed', 'done'): status_counts['done'] += 1
+            elif s_str in ('in_progress', 'in-progress'): status_counts['in_progress'] += 1
+            elif s_str in ('delayed', 'blocked', 'on_hold'): status_counts['blocked'] += 1
+            else: status_counts['todo'] += 1
+
+        # Now apply status_filter to restrict paginated items
+        if status_filter and status_filter != 'all':
+            if status_filter == 'todo':
+                queryset = queryset.filter(status__in=["pending", "open", "planning", "todo"])
+                if user.is_authenticated:
+                    card_q &= Q(status__in=["pending", "todo", "open"])
+            elif status_filter == 'in-progress':
+                queryset = queryset.filter(status="in_progress")
+                if user.is_authenticated:
+                    card_q &= Q(status="in_progress")
+            elif status_filter == 'blocked':
+                queryset = queryset.filter(status__in=["delayed", "on_hold"])
+                if user.is_authenticated:
+                    card_q &= Q(status__in=["delayed", "blocked", "on_hold"])
+            elif status_filter == 'done':
+                queryset = queryset.filter(status__in=["completed", "done"])
+                if user.is_authenticated:
+                    card_q &= Q(status__in=["completed", "done"])
+            else:
+                queryset = queryset.filter(status=status_filter)
+                if user.is_authenticated:
+                    card_q &= Q(status=status_filter)
+
+        # Fast query for Tasks (IDs and sorting fields only)
+        tasks_meta = list(queryset.values('id', 'created_at', 'status'))
+        for t in tasks_meta:
+            t['type'] = 'task'
+
+        cards_meta = []
+        if user.is_authenticated:
             cards = Card.objects.filter(card_q).distinct()
             cards_meta = list(cards.values('id', 'created_at', 'status'))
             for c in cards_meta:
@@ -858,6 +905,8 @@ class TaskViewSet(TenantModelViewSet):
                         "project": f"Board: {c.column.board.title}" if getattr(c, 'column', None) and getattr(c.column, 'board', None) else "Board Task",
                         "project_id": getattr(c.column.board, 'id', None) if getattr(c, 'column', None) else None,
                         "task_type": "board",
+                        "isUrgent": bool(getattr(c, 'is_urgent', False)),
+                        "is_urgent": bool(getattr(c, 'is_urgent', False)),
                         "assignee_detail": {
                             "id": c.assignee.id, "name": c.assignee.get_full_name() or c.assignee.username, "email": c.assignee.email
                         } if c.assignee else None,
@@ -873,94 +922,13 @@ class TaskViewSet(TenantModelViewSet):
 
         if paginate and hasattr(paginator, 'page') and paginator.page:
             resp = paginator.get_paginated_response(final_data)
-            status_counts = {"todo": 0, "in_progress": 0, "blocked": 0, "done": 0}
-            for m in combined_meta:
-                s = str(m.get('status') or 'pending').lower()
-                if s in ('completed', 'done'): status_counts['done'] += 1
-                elif s in ('in_progress', 'in-progress'): status_counts['in_progress'] += 1
-                elif s in ('delayed', 'blocked', 'on_hold'): status_counts['blocked'] += 1
-                else: status_counts['todo'] += 1
             resp.data['status_counts'] = status_counts
+            resp.data['overall_total'] = sum(status_counts.values())
             return resp
         
         return Response(final_data)
 
-    def create(self, request, *args, **kwargs):
-        org = self.get_organization()
-        
-        # Make a mutable copy of the data
-        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
-        
-        # Map frontend camelCase to backend snake_case
-        if data.get('dueDate'):
-            data['due_date'] = data.get('dueDate')
-        if data.get('dueTime'):
-            data['due_time'] = data.get('dueTime')
-        if data.get('dependentTask') and data.get('dependentTask') != "null":
-            data['dependency'] = data.get('dependentTask')
-        if data.get('estimatedEffort') is not None:
-            data['estimated_effort'] = data.get('estimatedEffort')
-        if data.get('effortUnit'):
-            data['effort_unit'] = data.get('effortUnit')
-            
-        if data.get('priority'):
-            # Frontend sends "P1 Critical", etc. Backend expects "P1", "P2", etc.
-            data['priority'] = str(data.get('priority'))[:2]
-            
-        if data.get('dueTime'):
-            data['due_time'] = data.get('dueTime')
-            
-        # Provide default due_date as model requires it
-        if not data.get('due_date'):
-            from django.utils import timezone
-            data['due_date'] = timezone.now().date().isoformat()
-            
-        # Handle assigned_to
-        if data.get('assignedTo') and data.get('assignedTo') != "null":
-            data['assigned_to'] = data.get('assignedTo')
-            
-        assignees = data.get('assigneeIds', [])
-        if isinstance(assignees, str):
-            import json
-            try:
-                assignees = json.loads(assignees)
-            except:
-                assignees = []
-                
-        assigned_to_user = request.user
-        if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
-            try:
-                from django.contrib.auth.models import User
-                assigned_to_user = User.objects.get(id=assignees[0])
-            except:
-                pass
-        elif 'assigned_to' in data and data['assigned_to'] and data['assigned_to'] != "null":
-            try:
-                from django.contrib.auth.models import User
-                assigned_to_user = User.objects.get(id=data['assigned_to'])
-            except:
-                pass
-
-        project_id = data.get('project_id') or data.get('project')
-        project = None
-        if project_id and str(project_id).isdigit():
-            try:
-                project = Project.objects.get(id=int(project_id))
-            except Project.DoesNotExist:
-                pass
-        elif project_id and isinstance(project_id, str):
-            try:
-                project = Project.objects.get(name__iexact=project_id)
-            except Project.DoesNotExist:
-                pass
-        
-        if not project:
-            project, _ = Project.objects.get_or_create(
-                name="General Workspace",
-                organization=org,
-                defaults={'created_by': request.user, 'department': 'General'}
-            )
-            
+    def _execute_task_create(self, request, data, project, assigned_to_user, org, assignees):
         serializer = self.get_serializer(data=data)
         serializer.is_valid(raise_exception=True)
         from .models import Task, TaskChecklist
@@ -1018,8 +986,129 @@ class TaskViewSet(TenantModelViewSet):
                 uploaded_by=request.user,
                 organization=org
             )
+        return task
 
-        headers = self.get_success_headers(serializer.data)
+    def create(self, request, *args, **kwargs):
+        org = self.get_organization()
+        if not org and request.user and request.user.is_authenticated:
+            try:
+                org_profile = getattr(request.user, 'org_profile', None)
+                if org_profile and org_profile.organization:
+                    org = org_profile.organization
+                else:
+                    from organization.models import Organization
+                    org = Organization.objects.filter(members=request.user).first() or Organization.objects.first()
+            except Exception:
+                pass
+        
+        # Make a mutable copy of the data
+        data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        
+        # Map frontend camelCase to backend snake_case
+        if data.get('dueDate'):
+            data['due_date'] = data.get('dueDate')
+        if 'dueTime' in data or 'due_time' in data:
+            from .serializers import parse_flexible_time
+            raw_time = data.get('due_time') if 'due_time' in data else data.get('dueTime')
+            data['due_time'] = parse_flexible_time(raw_time)
+        data.pop('dueTime', None)
+        if data.get('dependentTask') and data.get('dependentTask') != "null":
+            data['dependency'] = data.get('dependentTask')
+        if data.get('estimatedEffort') is not None:
+            data['estimated_effort'] = data.get('estimatedEffort')
+        if data.get('effortUnit'):
+            data['effort_unit'] = data.get('effortUnit')
+            
+        if data.get('priority'):
+            # Frontend sends "P1 Critical", etc. Backend expects "P1", "P2", etc.
+            data['priority'] = str(data.get('priority'))[:2]
+            
+        if 'isUrgent' in data:
+            data['is_urgent'] = bool(data.get('isUrgent'))
+        elif 'is_urgent' in data:
+            data['is_urgent'] = bool(data.get('is_urgent'))
+            
+        # Provide default due_date as model requires it
+        if not data.get('due_date'):
+            from django.utils import timezone
+            data['due_date'] = timezone.now().date().isoformat()
+            
+        # Handle assigned_to
+        if data.get('assignedTo') and data.get('assignedTo') != "null":
+            data['assigned_to'] = data.get('assignedTo')
+            
+        assignees = data.get('assigneeIds', [])
+        if isinstance(assignees, str):
+            import json
+            try:
+                assignees = json.loads(assignees)
+            except:
+                assignees = []
+                
+        assigned_to_user = request.user
+        if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
+            try:
+                from django.contrib.auth.models import User
+                assigned_to_user = User.objects.filter(id=assignees[0]).first() or request.user
+            except:
+                pass
+        elif 'assigned_to' in data and data['assigned_to'] and data['assigned_to'] != "null":
+            try:
+                from django.contrib.auth.models import User
+                assigned_to_user = User.objects.filter(id=data['assigned_to']).first() or request.user
+            except:
+                pass
+
+        from core.concurrency import robust_db_write
+
+        def _resolve_and_create():
+            nonlocal org, data, assigned_to_user, assignees
+            project_id = data.get('project_id') or data.get('project')
+            project = None
+            if project_id and str(project_id).isdigit():
+                project = Project.objects.filter(id=int(project_id)).first()
+            elif project_id and isinstance(project_id, str) and str(project_id).strip():
+                clean_proj = str(project_id).strip()
+                if org:
+                    project = Project.objects.filter(name__iexact=clean_proj, organization=org).first()
+                if not project:
+                    project = Project.objects.filter(name__iexact=clean_proj).first()
+                if not project:
+                    project = Project.objects.create(
+                        name=clean_proj,
+                        organization=org,
+                        created_by=request.user,
+                        department='General'
+                    )
+            
+            if not project:
+                if org:
+                    project = Project.objects.filter(name__iexact="General Workspace", organization=org).first()
+                if not project:
+                    project = Project.objects.filter(name__iexact="General Workspace").first()
+                if not project:
+                    project = Project.objects.create(
+                        name="General Workspace",
+                        organization=org,
+                        created_by=request.user,
+                        department='General'
+                    )
+
+            if not org and project and getattr(project, 'organization', None):
+                org = project.organization
+                
+            data['project_id'] = project.id
+            data.pop('project', None)
+            if assigned_to_user:
+                data['assigned_to'] = assigned_to_user.id
+            elif 'assigned_to' in data:
+                data['assigned_to'] = None
+
+            return self._execute_task_create(request, data, project, assigned_to_user, org, assignees)
+
+        task = robust_db_write(_resolve_and_create)
+
+        headers = self.get_success_headers(self.get_serializer(task).data)
         
         # Notify workspace about the new task
         self._notify_workspace(org, 'tasks_updated', {'action': 'create', 'task_id': task.id})
@@ -1031,17 +1120,40 @@ class TaskViewSet(TenantModelViewSet):
         instance = self.get_object()
         
         data = request.data.copy() if hasattr(request.data, 'copy') else dict(request.data)
+        requested_status = data.get('status')
         
         # Map frontend camelCase to backend snake_case for updates
         if data.get('dueDate'):
             data['due_date'] = data.get('dueDate')
-        if data.get('dueTime'):
-            data['due_time'] = data.get('dueTime')
+        if 'dueTime' in data or 'due_time' in data:
+            from .serializers import parse_flexible_time
+            raw_time = data.get('due_time') if 'due_time' in data else data.get('dueTime')
+            data['due_time'] = parse_flexible_time(raw_time)
+        data.pop('dueTime', None)
         if data.get('estimatedEffort') is not None:
             data['estimated_effort'] = data.get('estimatedEffort')
         if data.get('effortUnit'):
             data['effort_unit'] = data.get('effortUnit')
             
+        if 'isUrgent' in data:
+            data['is_urgent'] = bool(data.get('isUrgent'))
+        elif 'is_urgent' in data:
+            data['is_urgent'] = bool(data.get('is_urgent'))
+            
+        # Clean project_id if invalid string or project name passed
+        project_val = data.get('project_id') if 'project_id' in data else data.get('project')
+        if project_val is not None:
+            if str(project_val).isdigit():
+                data['project_id'] = int(project_val)
+            elif isinstance(project_val, str) and project_val.strip() not in ["", "null", "undefined"]:
+                proj = Project.objects.filter(name__iexact=str(project_val).strip()).first()
+                data['project_id'] = proj.id if proj else getattr(instance.project, 'id', None)
+            else:
+                data['project_id'] = getattr(instance.project, 'id', None)
+        elif 'project_id' in data:
+            data['project_id'] = getattr(instance.project, 'id', None)
+        data.pop('project', None)
+
         assignees = data.get('assigneeIds', [])
         if isinstance(assignees, str):
             import json
@@ -1050,7 +1162,11 @@ class TaskViewSet(TenantModelViewSet):
             except:
                 assignees = []
                 
-        if data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
+        if data.get('taskType') == 'self':
+            if not instance.assigned_to:
+                instance.assigned_to = request.user
+            data['assigned_to'] = instance.assigned_to.id
+        elif data.get('taskType') == 'assign' and assignees and len(assignees) > 0:
             try:
                 from django.contrib.auth.models import User
                 data['assigned_to'] = User.objects.get(id=assignees[0]).id
@@ -1062,10 +1178,11 @@ class TaskViewSet(TenantModelViewSet):
         old_status = instance.status
         serializer = self.get_serializer(instance, data=data, partial=partial)
         serializer.is_valid(raise_exception=True)
-        self.perform_update(serializer)
+        from core.concurrency import robust_db_write
+        robust_db_write(lambda: self.perform_update(serializer))
 
         # Save multi-assignees if passed
-        if 'assigneeIds' in data:
+        if 'assigneeIds' in data and data.get('taskType') != 'self':
             if assignees and len(assignees) > 0:
                 try:
                     from django.contrib.auth.models import User
@@ -1075,6 +1192,9 @@ class TaskViewSet(TenantModelViewSet):
                     pass
             else:
                 instance.assignees.clear()
+        elif data.get('taskType') == 'self':
+            assigned_user = instance.assigned_to or request.user
+            instance.assignees.set([assigned_user])
 
         # Reload instance to get new status
         instance.refresh_from_db()
@@ -1189,17 +1309,416 @@ class TaskViewSet(TenantModelViewSet):
 
         self._notify_workspace(instance.organization, 'tasks_updated', {'action': 'update', 'task_id': instance.id})
 
-        return Response(self.get_serializer(instance).data)
+        if request.user.is_authenticated:
+            try:
+                from workspace.models import TeamActivity
+                act = 'completed task' if instance.status in ['done', 'completed'] else 'updated task'
+                TeamActivity.objects.create(
+                    user=request.user,
+                    action=act,
+                    target=instance.title
+                )
+            except Exception:
+                pass
+
+        serializer_data = self.get_serializer(instance).data
+        if (
+            getattr(instance, 'is_queued', False)
+            and getattr(instance, 'status', None) == 'pending'
+            and requested_status in ['in_progress', 'in-progress']
+        ):
+            serializer_data['queued'] = True
+            serializer_data['queue_detail'] = "Active task limit reached; task has been queued."
+        else:
+            serializer_data['queued'] = False
+            serializer_data['queue_detail'] = None
+
+        return Response(serializer_data)
 
     def destroy(self, request, *args, **kwargs):
+        from core.concurrency import robust_db_write
         instance = self.get_object()
         org = instance.organization
         task_id = instance.id
         
-        response = super().destroy(request, *args, **kwargs)
+        response = robust_db_write(lambda: super(TaskViewSet, self).destroy(request, *args, **kwargs))
         
         self._notify_workspace(org, 'tasks_updated', {'action': 'delete', 'task_id': task_id})
         return response
+
+    @action(detail=False, methods=['get'], url_path='csv_template')
+    def csv_template(self, request):
+        from django.http import HttpResponse
+        import csv
+
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = 'attachment; filename="task_bulk_upload_template.csv"'
+
+        writer = csv.writer(response)
+        writer.writerow([
+            'Task Topic',
+            'Description',
+            'Priority',
+            'Due Date',
+            'Due Time',
+            'Project',
+            'Assigned To',
+            'Type',
+            'Platform',
+            'Estimated Effort',
+            'Effort Unit',
+            'Is Urgent',
+            'Tags'
+        ])
+        
+        org = self.get_organization()
+        user_projects = list(Project.objects.filter(organization=org).exclude(name__iexact="General Workspace").values_list('name', flat=True)[:5])
+        
+        proj_1 = user_projects[0] if len(user_projects) > 0 else "Mobile App Development"
+        proj_2 = user_projects[1] if len(user_projects) > 1 else "Website Redesign"
+        proj_3 = user_projects[2] if len(user_projects) > 2 else "General Workspace"
+
+        current_user = request.user.username if request.user.is_authenticated else 'admin'
+        today_str = timezone.now().date().isoformat()
+        future_date_1 = (timezone.now().date() + timezone.timedelta(days=2)).isoformat()
+        future_date_2 = (timezone.now().date() + timezone.timedelta(days=5)).isoformat()
+
+        writer.writerow([
+            'Implement User Authentication API',
+            'Setup JWT login endpoints, refresh tokens and RBAC middleware',
+            'P1',
+            today_str,
+            '17:00',
+            proj_1,
+            current_user,
+            'Feature',
+            'Backend',
+            '6',
+            'hours',
+            'TRUE',
+            'auth, security, api'
+        ])
+        writer.writerow([
+            'Design Dashboard UI Layout',
+            'Create responsive statistics widgets, navigation drawer and activity charts',
+            'P2',
+            future_date_1,
+            '18:30',
+            proj_2,
+            '',
+            'Enhancement',
+            'Web',
+            '8',
+            'hours',
+            'FALSE',
+            'ui, design, frontend'
+        ])
+        writer.writerow([
+            'Database Query Optimization',
+            'Analyze slow queries and create database indices on tasks and projects',
+            'P3',
+            future_date_2,
+            '14:00',
+            proj_3,
+            '',
+            'Issue',
+            'Database',
+            '4',
+            'hours',
+            'FALSE',
+            'database, performance'
+        ])
+        return response
+
+    @action(detail=False, methods=['post'], parser_classes=[MultiPartParser, FormParser, JSONParser], url_path='bulk_upload')
+    def bulk_upload(self, request):
+        import csv
+        import json
+        from django.utils import timezone
+        from django.contrib.auth.models import User
+        from .models import Task, Project
+        from .serializers import parse_flexible_time
+
+        org = self.get_organization()
+        user = request.user
+
+        is_dict_data = isinstance(request.data, dict)
+        default_project_id = request.data.get('default_project_id') if is_dict_data else None
+        default_assigned_to_id = request.data.get('default_assigned_to_id') if is_dict_data else None
+        default_priority = (request.data.get('default_priority') if is_dict_data else None) or 'P3'
+
+        rows_to_process = []
+        uploaded_file = request.FILES.get('file')
+
+        if uploaded_file:
+            try:
+                raw_bytes = uploaded_file.read()
+                try:
+                    decoded_file = raw_bytes.decode('utf-8-sig').splitlines()
+                except UnicodeDecodeError:
+                    decoded_file = raw_bytes.decode('latin-1').splitlines()
+
+                reader = csv.DictReader(decoded_file)
+                for raw_row in reader:
+                    if any(str(val).strip() for val in raw_row.values() if val is not None):
+                        rows_to_process.append(raw_row)
+            except Exception as e:
+                return Response({'error': f"Failed to parse CSV file: {str(e)}"}, status=status.HTTP_400_BAD_REQUEST)
+        elif is_dict_data and 'tasks' in request.data:
+            tasks_data = request.data.get('tasks')
+            if isinstance(tasks_data, str):
+                try:
+                    tasks_data = json.loads(tasks_data)
+                except Exception:
+                    tasks_data = []
+            if isinstance(tasks_data, list):
+                rows_to_process = tasks_data
+        elif isinstance(request.data, list):
+            rows_to_process = request.data
+
+        if not rows_to_process:
+            return Response({'error': 'No tasks found to upload. Please supply a valid CSV file or task list.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        projects_by_name = {p.name.lower().strip(): p for p in Project.objects.filter(organization=org)}
+        projects_by_id = {str(p.id): p for p in Project.objects.filter(organization=org)}
+
+        users_by_username = {}
+        users_by_email = {}
+        users_by_id = {}
+        for u in User.objects.all():
+            users_by_username[u.username.lower().strip()] = u
+            if u.email:
+                users_by_email[u.email.lower().strip()] = u
+            users_by_id[str(u.id)] = u
+
+        fallback_project = None
+        if default_project_id and str(default_project_id) in projects_by_id:
+            fallback_project = projects_by_id[str(default_project_id)]
+        if not fallback_project:
+            fallback_project, _ = Project.objects.get_or_create(
+                name="General Workspace",
+                organization=org,
+                defaults={'created_by': user, 'department': 'General'}
+            )
+            projects_by_name[fallback_project.name.lower().strip()] = fallback_project
+            projects_by_id[str(fallback_project.id)] = fallback_project
+
+        fallback_assignee = None
+        if default_assigned_to_id and str(default_assigned_to_id) in users_by_id:
+            fallback_assignee = users_by_id[str(default_assigned_to_id)]
+
+        created_tasks = []
+        logs = []
+        errors = []
+
+        for idx, row in enumerate(rows_to_process, start=1):
+            now = timezone.now()
+            timestamp_now = now.isoformat()
+            time_display = now.strftime('%I:%M:%S %p')
+
+            norm = {}
+            for k, v in row.items():
+                if k is not None:
+                    cleaned_k = str(k).strip().lower().replace(' ', '_').replace('-', '_')
+                    norm[cleaned_k] = v.strip() if isinstance(v, str) else v
+
+            title = (
+                norm.get('task_topic') or
+                norm.get('topic') or
+                norm.get('title') or
+                norm.get('task_title') or
+                norm.get('name') or
+                norm.get('task_name')
+            )
+            if not title or not str(title).strip():
+                err_msg = f"Row #{idx}: Missing task title/topic."
+                errors.append(err_msg)
+                logs.append({
+                    'timestamp': timestamp_now,
+                    'time_display': time_display,
+                    'status': 'error',
+                    'row_index': idx,
+                    'title': 'Untitled',
+                    'message': err_msg
+                })
+                continue
+            title = str(title).strip()
+
+            description = norm.get('description') or norm.get('details') or ''
+
+            raw_priority = str(norm.get('priority') or default_priority or 'P3').strip().upper()
+            if 'P1' in raw_priority or 'CRITICAL' in raw_priority:
+                priority = 'P1'
+            elif 'P2' in raw_priority or 'HIGH' in raw_priority:
+                priority = 'P2'
+            elif 'P4' in raw_priority or 'LOW' in raw_priority:
+                priority = 'P4'
+            else:
+                priority = 'P3'
+
+            # Robust due date extraction across variations
+            raw_due_date = norm.get('due_date') or norm.get('duedate') or norm.get('due') or norm.get('date') or norm.get('deadline') or norm.get('task_due_date') or norm.get('target_date')
+            if not raw_due_date:
+                for k, v in norm.items():
+                    if v and ('due' in k or 'deadline' in k or 'target' in k):
+                        raw_due_date = v
+                        break
+
+            due_date = None
+            if raw_due_date:
+                raw_due_date_str = str(raw_due_date).strip().split('T')[0].split(' ')[0]
+                # Excel serial date support (e.g. 45582)
+                if raw_due_date_str.isdigit() and len(raw_due_date_str) in (4, 5):
+                    try:
+                        from datetime import date as py_date, timedelta as py_timedelta
+                        due_date = py_date(1899, 12, 30) + py_timedelta(days=int(raw_due_date_str))
+                    except Exception:
+                        pass
+                if not due_date:
+                    date_formats = (
+                        '%Y-%m-%d', '%d-%m-%Y', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d',
+                        '%d.%m.%Y', '%m-%d-%Y', '%d-%b-%Y', '%d-%B-%Y', '%b-%d-%Y',
+                        '%d/%m/%y', '%d-%m-%y', '%m/%d/%y', '%y-%m-%d', '%d %b %Y',
+                        '%d %B %Y', '%b %d, %Y', '%B %d, %Y'
+                    )
+                    for fmt in date_formats:
+                        try:
+                            due_date = timezone.datetime.strptime(raw_due_date_str, fmt).date()
+                            break
+                        except ValueError:
+                            pass
+            if not due_date:
+                due_date = timezone.now().date()
+
+            raw_due_time = norm.get('due_time') or norm.get('duetime') or norm.get('time')
+            due_time = parse_flexible_time(raw_due_time) if raw_due_time else None
+
+            raw_project = norm.get('project') or norm.get('project_id') or norm.get('project_name')
+            assigned_project = None
+            if raw_project:
+                proj_str = str(raw_project).strip()
+                if proj_str in projects_by_id:
+                    assigned_project = projects_by_id[proj_str]
+                elif proj_str.lower() in projects_by_name:
+                    assigned_project = projects_by_name[proj_str.lower()]
+                else:
+                    found_proj = Project.objects.filter(organization=org, name__iexact=proj_str).first()
+                    if found_proj:
+                        assigned_project = found_proj
+                        projects_by_name[proj_str.lower()] = found_proj
+                    else:
+                        # User specified a project that does not exist yet; auto-create so task attaches to this exact project
+                        new_proj = Project.objects.create(
+                            name=proj_str,
+                            organization=org,
+                            created_by=user,
+                            department='General'
+                        )
+                        assigned_project = new_proj
+                        projects_by_name[proj_str.lower()] = new_proj
+                        projects_by_id[str(new_proj.id)] = new_proj
+            if not assigned_project:
+                assigned_project = fallback_project
+
+            raw_assignee = norm.get('assigned_to') or norm.get('assignee') or norm.get('assigned')
+            assigned_user = None
+            if raw_assignee:
+                assignee_str = str(raw_assignee).strip()
+                if assignee_str in users_by_id:
+                    assigned_user = users_by_id[assignee_str]
+                elif assignee_str.lower() in users_by_username:
+                    assigned_user = users_by_username[assignee_str.lower()]
+                elif assignee_str.lower() in users_by_email:
+                    assigned_user = users_by_email[assignee_str.lower()]
+                else:
+                    found_user = User.objects.filter(username__iexact=assignee_str).first() or User.objects.filter(email__iexact=assignee_str).first()
+                    if found_user:
+                        assigned_user = found_user
+            if not assigned_user:
+                assigned_user = fallback_assignee or user
+
+            task_type = norm.get('type') or ''
+            platform = norm.get('platform') or ''
+
+            raw_effort = norm.get('estimated_effort') or norm.get('effort') or norm.get('estimated_hours') or 3
+            try:
+                estimated_effort = int(float(str(raw_effort).strip()))
+            except (ValueError, TypeError):
+                estimated_effort = 3
+            effort_unit = norm.get('effort_unit') or 'hours'
+
+            raw_urgent = str(norm.get('is_urgent') or norm.get('urgent') or 'false').lower()
+            is_urgent = raw_urgent in ['true', 'yes', '1', 't', 'y']
+
+            try:
+                task = Task.objects.create(
+                    title=title,
+                    description=description,
+                    priority=priority,
+                    due_date=due_date,
+                    due_time=due_time,
+                    project=assigned_project,
+                    assigned_to=assigned_user,
+                    type=task_type,
+                    platform=platform,
+                    estimated_effort=estimated_effort,
+                    effort_unit=effort_unit,
+                    is_urgent=is_urgent,
+                    status='pending',
+                    created_by=user,
+                    organization=org
+                )
+                if assigned_user:
+                    task.assignees.add(assigned_user)
+
+                created_tasks.append(self.get_serializer(task).data)
+
+                assignee_label = assigned_user.get_full_name() or assigned_user.username if assigned_user else 'Unassigned'
+                proj_label = assigned_project.name if assigned_project else 'General Workspace'
+
+                logs.append({
+                    'timestamp': timestamp_now,
+                    'time_display': time_display,
+                    'status': 'success',
+                    'row_index': idx,
+                    'task_id': task.id,
+                    'title': task.title,
+                    'priority': task.priority,
+                    'project': proj_label,
+                    'assigned_to': assignee_label,
+                    'due_date': str(task.due_date),
+                    'message': f"[{time_display}] Created task #{task.id}: \"{task.title}\" | {task.priority} | Project: {proj_label} | Assigned: {assignee_label}"
+                })
+
+            except Exception as e:
+                err_text = f"Row #{idx} (\"{title}\"): Error creating task - {str(e)}"
+                errors.append(err_text)
+                logs.append({
+                    'timestamp': timestamp_now,
+                    'time_display': time_display,
+                    'status': 'error',
+                    'row_index': idx,
+                    'title': title,
+                    'message': err_text
+                })
+
+        if created_tasks:
+            self._notify_workspace(org, 'tasks_updated', {
+                'action': 'bulk_upload',
+                'count': len(created_tasks),
+                'created_by': user.username
+            })
+
+        return Response({
+            'success': True,
+            'total_rows': len(rows_to_process),
+            'created_count': len(created_tasks),
+            'failed_count': len(errors),
+            'created_tasks': created_tasks,
+            'logs': logs,
+            'errors': errors
+        }, status=status.HTTP_201_CREATED if created_tasks else status.HTTP_400_BAD_REQUEST)
+
 
 import openpyxl
 from django.http import HttpResponse

@@ -55,11 +55,22 @@ class OrganizationViewSet(viewsets.ModelViewSet):
 
 class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
     def validate(self, attrs):
-        # Manually check if user exists but is inactive to return a specific error
-        username = attrs.get('username')
-        user = User.objects.filter(username=username).first()
-        if user and not user.is_active:
-            raise serializers.ValidationError('Account Pending Admin Approval')
+        # Support case-insensitive username or email lookup while preserving password case-sensitivity
+        raw_username = attrs.get('username') or (attrs.get(self.username_field) if hasattr(self, 'username_field') else None)
+        if raw_username:
+            from django.db.models import Q
+            clean_username = str(raw_username).strip()
+            user = User.objects.filter(
+                Q(username__iexact=clean_username) | Q(email__iexact=clean_username)
+            ).first()
+            if user:
+                # Normalize username to the exact canonical username in the database
+                # The password remains strictly untouched and case-sensitive
+                attrs['username'] = user.username
+                if hasattr(self, 'username_field') and self.username_field in attrs:
+                    attrs[self.username_field] = user.username
+                if not user.is_active:
+                    raise serializers.ValidationError('Account Pending Admin Approval')
             
         data = super().validate(attrs)
         data['username'] = self.user.username
@@ -159,7 +170,8 @@ class ForgotPasswordRequestView(APIView):
         if not email:
             return Response({'error': 'Email is required'}, status=400)
             
-        user = User.objects.filter(email=email).first()
+        clean_email = str(email).strip()
+        user = User.objects.filter(email__iexact=clean_email).first()
         if not user:
             # Return success even if user doesn't exist for security reasons
             return Response({'message': 'If an account with that email exists, an OTP has been sent.'})
@@ -175,7 +187,7 @@ class ForgotPasswordRequestView(APIView):
                 'Password Reset OTP',
                 f'Your OTP for password reset is: {token.otp_code}. It expires in 15 minutes.',
                 settings.DEFAULT_FROM_EMAIL,
-                [email],
+                [clean_email],
                 fail_silently=False,
             )
         except Exception as e:
@@ -191,7 +203,8 @@ class VerifyOTPView(APIView):
         email = request.data.get('email')
         otp = request.data.get('otp')
         
-        user = User.objects.filter(email=email).first()
+        clean_email = str(email).strip() if email else ''
+        user = User.objects.filter(email__iexact=clean_email).first()
         if not user:
             return Response({'error': 'Invalid OTP'}, status=400)
             
@@ -210,7 +223,8 @@ class ResetPasswordView(APIView):
         otp = request.data.get('otp')
         new_password = request.data.get('password')
         
-        user = User.objects.filter(email=email).first()
+        clean_email = str(email).strip() if email else ''
+        user = User.objects.filter(email__iexact=clean_email).first()
         if not user:
             return Response({'error': 'Invalid request'}, status=400)
             

@@ -109,36 +109,25 @@ def create_task_calendar(request):
         
         due_date = dateutil_parse(due_date_str).date() if due_date_str else timezone.now().date()
         
-        project, _ = Project.objects.get_or_create(
-            name="General Workspace",
-            defaults={'created_by': request.user, 'department': 'General'}
-        )
+        from core.concurrency import robust_db_write
+        def _create_calendar_task():
+            project, _ = Project.objects.get_or_create(
+                name="General Workspace",
+                defaults={'created_by': request.user, 'department': 'General'}
+            )
+            return Task.objects.create(
+                title=title,
+                description=description,
+                priority=priority,
+                status=status,
+                project=project,
+                assigned_to=assigned_to or request.user,
+                created_by=request.user,
+                due_date=due_date,
+                time_interval_minutes=time_interval_minutes
+            )
         
-        assigned_to = None
-        if assignee_id:
-            if assignee_id == "self":
-                assigned_to = request.user
-            else:
-                assigned_to = User.objects.filter(id=assignee_id).first()
-                
-        time_interval_minutes = None
-        if 'time_interval_minutes' in request.data:
-            try:
-                time_interval_minutes = int(request.data['time_interval_minutes'])
-            except (ValueError, TypeError):
-                pass
-            
-        task = Task.objects.create(
-            title=title,
-            description=description,
-            priority=priority,
-            status=status,
-            project=project,
-            assigned_to=assigned_to or request.user,
-            created_by=request.user,
-            due_date=due_date,
-            time_interval_minutes=time_interval_minutes
-        )
+        task = robust_db_write(_create_calendar_task)
         
         return Response({
             "message": "Task created successfully",

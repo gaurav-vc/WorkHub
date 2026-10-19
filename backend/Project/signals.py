@@ -36,11 +36,15 @@ def sync_task_to_card_and_event(sender, instance, created, **kwargs):
             return
 
         # 1. Sync to Card
-        board, _ = Board.objects.get_or_create(
-            title="My Global Tasks",
-            owner=user,
-            defaults={'template_type': 'personal'}
-        )
+        task_org = getattr(instance, 'organization', None)
+        board = Board.all_objects.filter(title="My Global Tasks", owner=user).first()
+        if not board:
+            board = Board.objects.create(
+                title="My Global Tasks",
+                owner=user,
+                template_type='personal',
+                organization=task_org
+            )
         
         # Map Task status to Column title
         col_title = (instance.status or "todo").replace('_', ' ').title()
@@ -50,13 +54,13 @@ def sync_task_to_card_and_event(sender, instance, created, **kwargs):
         column, _ = Column.objects.get_or_create(
             board=board,
             title=col_title,
-            defaults={'order': 0, 'color': 'bg-primary'}
+            defaults={'order': 0, 'color': 'bg-primary', 'organization': task_org}
         )
         
         # Find existing card or create
-        card = Card.objects.filter(title=instance.title, assignee=user).first()
+        card = Card.all_objects.filter(title=instance.title, assignee=user).first()
         if not card:
-            card = Card.objects.filter(title=instance.title, created_by=user).first()
+            card = Card.all_objects.filter(title=instance.title, created_by=user).first()
             
         if card:
             card.column = column
@@ -64,6 +68,8 @@ def sync_task_to_card_and_event(sender, instance, created, **kwargs):
             card.due_date = instance.due_date
             card.priority = instance.priority
             card.status = instance.status
+            if task_org and not getattr(card, 'organization_id', None):
+                card.organization = task_org
             card.save()
         else:
             Card.objects.create(
@@ -74,12 +80,13 @@ def sync_task_to_card_and_event(sender, instance, created, **kwargs):
                 created_by=user,
                 due_date=instance.due_date,
                 priority=instance.priority,
-                status=instance.status
+                status=instance.status,
+                organization=task_org
             )
             
         # 2. Sync to Calendar Meeting (type: task)
         # Find existing meeting
-        meeting = Meeting.objects.filter(title=instance.title, organizer=user, meeting_type='task').first()
+        meeting = Meeting.all_objects.filter(title=instance.title, organizer=user, meeting_type='task').first()
         due_dt = timezone.now()
         
         due_date_val = instance.due_date

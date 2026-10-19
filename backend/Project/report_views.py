@@ -95,32 +95,46 @@ def employee_stats_report(request):
         except ValueError:
             return Response({"error": "Invalid date format. Use YYYY-MM-DD."}, status=400)
             
-    # Base query for tasks assigned to the employee
-    assigned_tasks = Task.objects.filter(assigned_to__in=employees)
-    created_tasks = Task.objects.filter(created_by__in=employees)
+    # Base queries for employee tasks: assigned to employee (single or multi-assignees), created by employee, or both
+    base_assigned = Task.objects.filter(Q(assigned_to__in=employees) | Q(assignees__in=employees)).distinct()
+    base_created = Task.objects.filter(created_by__in=employees).distinct()
+    base_all = Task.objects.filter(Q(assigned_to__in=employees) | Q(assignees__in=employees) | Q(created_by__in=employees)).distinct()
     
     if start_date:
-        assigned_tasks = assigned_tasks.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
-        created_tasks = created_tasks.filter(created_at__date__gte=start_date, created_at__date__lte=end_date)
+        assigned_tasks = base_assigned.filter(
+            Q(created_at__date__gte=start_date, created_at__date__lte=end_date) |
+            Q(completion_date__date__gte=start_date, completion_date__date__lte=end_date)
+        )
+        created_tasks = base_created.filter(
+            created_at__date__gte=start_date, created_at__date__lte=end_date
+        )
+        all_tasks = base_all.filter(
+            Q(created_at__date__gte=start_date, created_at__date__lte=end_date) |
+            Q(completion_date__date__gte=start_date, completion_date__date__lte=end_date)
+        )
+    else:
+        assigned_tasks = base_assigned
+        created_tasks = base_created
+        all_tasks = base_all
         
-    total_assigned = assigned_tasks.count()
+    strictly_assigned = assigned_tasks.count()
     total_created = created_tasks.count()
+    total_volume = all_tasks.count()
     
     # Completed: status is 'done' or 'completed'
-    completed_tasks = assigned_tasks.filter(status__in=['done', 'completed'])
+    completed_tasks = all_tasks.filter(status__in=['done', 'completed'])
     total_completed = completed_tasks.count()
     
     # Delayed: due_date < today and not completed, or status is 'delayed'
-    total_delayed = assigned_tasks.filter(
+    total_delayed = all_tasks.filter(
         Q(due_date__lt=today, status__in=['pending', 'in_progress', 'todo', 'in-progress']) |
         Q(status='delayed')
     ).count()
     
     # Issues/Blocked: status is 'blocked' or 'issues'
-    total_issues = assigned_tasks.filter(status__in=['blocked', 'issues', 'issue']).count()
+    total_issues = all_tasks.filter(status__in=['blocked', 'issues', 'issue']).count()
     
-    # Trend Data: group completed tasks by date (last 30 days)
-    # We will just fetch them and group in python for simplicity
+    # Trend Data: group completed tasks by real-time completion date
     trend_data = {}
     if start_date:
         current = start_date
@@ -129,27 +143,107 @@ def employee_stats_report(request):
             current += datetime.timedelta(days=1)
             
         for t in completed_tasks:
-            # Assuming tasks have updated_at or we use created_at for trend (ideally completed_date)
-            # We'll use due_date or created_at since completed_date might not exist
-            d = t.created_at.date().strftime('%Y-%m-%d')
+            comp_dt = t.completion_date or t.created_at
+            d = comp_dt.date().strftime('%Y-%m-%d')
             if d in trend_data:
                 trend_data[d] += 1
                 
     formatted_trend = [{"date": k, "completed": v} for k, v in sorted(trend_data.items())]
     
+    from datetime import timezone as dt_tz
+    IST = datetime.timezone(datetime.timedelta(hours=5, minutes=30))
+
+    def format_ist(dt):
+        if not dt:
+            return None
+        try:
+            # Ensure datetime is aware
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=dt_tz.utc)
+            local_dt = dt.astimezone(IST)
+            return local_dt.strftime('%Y-%m-%d %I:%M:%S %p')
+        except Exception:
+            return dt.strftime('%Y-%m-%d %I:%M:%S %p') if dt else None
+
     # Raw tasks for table
     raw_tasks = []
-    for t in assigned_tasks.order_by('-created_at')[:50]: # Limit to 50 for performance
+    for t in all_tasks.select_related('project', 'assigned_to', 'created_by').prefetch_related('assignees').order_by('-created_at')[:100]:
+        comp_str = format_ist(t.completion_date)
+        started_str = format_ist(t.started_at)
+        
+        # Real-time status change time
+        if t.status in ['done', 'completed'] and t.completion_date:
+            status_change_time = format_ist(t.completion_date)
+        elif t.status in ['in_progress', 'in-progress'] and t.started_at:
+            status_change_time = format_ist(t.started_at)
+        else:
+            status_change_time = format_ist(t.created_at)
+
+        task_logs = [
+            {
+                "event": "Task Created",
+                "timestamp": format_ist(t.created_at),
+                "actor": t.created_by.get_full_name() or t.created_by.username if t.created_by else "System"
+            }
+        ]
+        if t.started_at:
+            task_logs.append({
+                "event": "Task Started (In Progress)",
+                "timestamp": format_ist(t.started_at),
+                "actor": t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Assignee"
+            })
+        if t.completion_date:
+            task_logs.append({
+                "event": "Task Completed",
+                "timestamp": format_ist(t.completion_date),
+                "actor": t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Assignee"
+            })
+
+        assignee_names = []
+        if t.assigned_to:
+            assignee_names.append(t.assigned_to.get_full_name() or t.assigned_to.username)
+        for a in t.assignees.all():
+            a_name = a.get_full_name() or a.username
+            if a_name not in assignee_names:
+                assignee_names.append(a_name)
+        assignee_display = ", ".join(assignee_names) if assignee_names else "Unassigned"
+
         raw_tasks.append({
             "id": t.id,
             "title": t.title,
-            "assignee": t.assigned_to.get_full_name() or t.assigned_to.username if t.assigned_to else "Unassigned",
+            "project": t.project.name if t.project else None,
+            "project_id": t.project.id if t.project else None,
+            "assignee": assignee_display,
+            "created_by": t.created_by.get_full_name() or t.created_by.username if t.created_by else "Unassigned",
+            "is_created_by_employee": bool(t.created_by and t.created_by in employees),
             "status": t.status,
             "priority": t.priority,
             "due_date": t.due_date.strftime('%Y-%m-%d') if t.due_date else None,
-            "created_at": t.created_at.strftime('%Y-%m-%d')
+            "created_at": t.created_at.strftime('%Y-%m-%d'),
+            "created_at_time": t.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+            "completed_at": comp_str,
+            "completed_date": t.completion_date.strftime('%Y-%m-%d') if t.completion_date else None,
+            "started_at": started_str,
+            "status_change_time": status_change_time,
+            "logs": task_logs
         })
         
+    activity_logs = []
+    try:
+        from workspace.models import TeamActivity
+        activities = TeamActivity.objects.filter(user__in=employees).order_by('-created_at')[:50]
+        for act in activities:
+            activity_logs.append({
+                "id": act.id,
+                "user": act.user.get_full_name() or act.user.username,
+                "action": act.action,
+                "target": act.target,
+                "timestamp": act.created_at.strftime('%Y-%m-%d %H:%M:%S'),
+                "date": act.created_at.strftime('%Y-%m-%d')
+            })
+    except Exception:
+        pass
+
     if employees.count() == 1:
         emp = employees.first()
         emp_data = {
@@ -167,12 +261,15 @@ def employee_stats_report(request):
     return Response({
         "employee": emp_data,
         "kpis": {
-            "total_assigned": total_assigned,
+            "total_volume": total_volume,
+            "total_assigned": total_volume,
+            "strictly_assigned": strictly_assigned,
             "total_created": total_created,
             "total_completed": total_completed,
             "total_delayed": total_delayed,
             "total_issues": total_issues
         },
         "trend_data": formatted_trend,
-        "raw_tasks": raw_tasks
+        "raw_tasks": raw_tasks,
+        "activity_logs": activity_logs
     })
